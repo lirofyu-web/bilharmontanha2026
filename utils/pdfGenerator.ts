@@ -2,8 +2,8 @@
 import { Capacitor } from '@capacitor/core';
 import { nativePrintPDF } from './nativePrint';
 
-declare const html2canvas: any;
-declare const jspdf: any;
+import { jsPDF } from 'jspdf';
+import html2canvas from 'html2canvas';
 
 /**
  * Converts an HTML element to a PDF and opens it in a new browser tab.
@@ -18,8 +18,8 @@ export const exportElementAsPDF = (element: HTMLElement, fileName: string): Prom
       return reject(new Error("Elemento para renderização não encontrado."));
     }
 
-    if (typeof jspdf === 'undefined' || typeof html2canvas === 'undefined') {
-        return reject(new Error("As bibliotecas jsPDF ou html2canvas não foram carregadas."));
+    if (!jsPDF || !html2canvas) {
+        return reject(new Error("As bibliotecas de PDF não foram devidamente carregadas."));
     }
 
     try {
@@ -35,7 +35,6 @@ export const exportElementAsPDF = (element: HTMLElement, fileName: string): Prom
         return reject(new Error("Falha ao criar os dados da imagem a partir do canvas."));
       }
 
-      const { jsPDF } = jspdf;
       const pdfWidth = 210; // A4 width in mm
       const pdfHeight = 297; // A4 height in mm
       const ratio = canvas.width / canvas.height;

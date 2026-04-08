@@ -8,12 +8,15 @@ import { PurpleBilliardBallIcon } from './icons/PurpleBilliardBallIcon';
 import { LocationMarkerIcon } from './icons/LocationMarkerIcon';
 import { PhoneIcon } from './icons/PhoneIcon'; // Assuming you have this icon
 import { AnnotationIcon } from './icons/AnnotationIcon'; // Assuming you have this icon
+import { CreditCardIcon } from './icons/CreditCardIcon';
 
 interface FullScreenCustomerViewProps {
     customer: Customer;
     onClose: () => void;
     warnings: Warning[];
     onWarningClick: (customer: Customer) => void;
+    onOpenDigitalBilling?: (customer: Customer) => void;
+    onOpenEsp32Dashboard?: (herokuId: string, machineName: string, customerMpStoreId?: string) => void;
 }
 
 const DetailItem: React.FC<{icon: React.ReactNode, label: string, value: React.ReactNode}> = ({ icon, label, value }) => (
@@ -32,6 +35,8 @@ const FullScreenCustomerView: React.FC<FullScreenCustomerViewProps> = ({
     onClose, 
     warnings, 
     onWarningClick,
+    onOpenDigitalBilling,
+    onOpenEsp32Dashboard,
 }) => {
     
     const handleWarningClick = (e: React.MouseEvent) => {
@@ -128,6 +133,43 @@ const FullScreenCustomerView: React.FC<FullScreenCustomerViewProps> = ({
                             </div>
                         </section>
                     </div>
+
+                    {/* Digital & Hardware Integrations Section */}
+                    {(customer.mercadoPagoStoreId || customer.equipment.some(e => (e as any).herokuId)) && (
+                        <section className="mt-8 pt-8 border-t border-slate-200 dark:border-slate-800">
+                            <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-4">Ações Rápidas de Integração</h3>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                {customer.mercadoPagoStoreId && onOpenDigitalBilling && (
+                                    <button
+                                        onClick={() => onOpenDigitalBilling(customer)}
+                                        className="flex flex-col items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-6 rounded-2xl shadow-lg active:scale-95 transition-all w-full"
+                                    >
+                                        <CreditCardIcon className="w-8 h-8" />
+                                        <div className="text-center">
+                                            <p className="text-xl font-black leading-none">MP DIGITAL</p>
+                                            <p className="text-[10px] opacity-80 uppercase mt-1">Faturamento Eletrônico</p>
+                                        </div>
+                                    </button>
+                                )}
+
+                                {customer.equipment.some(e => (e as any).herokuId) && onOpenEsp32Dashboard && (
+                                    <button
+                                        onClick={() => {
+                                            const equip = customer.equipment.find(e => (e as any).herokuId);
+                                            if (equip) onOpenEsp32Dashboard((equip as any).herokuId, `${customer.name} - ${equip.numero}`, customer.mercadoPagoStoreId);
+                                        }}
+                                        className="flex flex-col items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-bold py-6 rounded-2xl shadow-lg active:scale-95 transition-all w-full"
+                                    >
+                                        <div className="w-4 h-4 bg-green-400 rounded-full animate-pulse shadow-[0_0_10px_rgba(74,222,128,0.5)]"></div>
+                                        <div className="text-center">
+                                            <p className="text-xl font-black leading-none">CONTROLE PIX</p>
+                                            <p className="text-[10px] opacity-80 uppercase mt-1">Gestão Remota</p>
+                                        </div>
+                                    </button>
+                                )}
+                            </div>
+                        </section>
+                    )}
                 </main>
             </div>
             <style>{`

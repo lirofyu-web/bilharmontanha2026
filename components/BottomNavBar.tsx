@@ -1,7 +1,6 @@
- // components/BottomNavBar.tsx
 import React from 'react';
-import { View } from '../types';
 import { HomeIcon, UsersIcon, ReceiptIcon, CalculatorIcon } from './icons';
+import { View } from '../types';
 
 interface BottomNavBarProps {
   currentView: View;
@@ -17,7 +16,6 @@ const navItems = [
 
 const BottomNavBar: React.FC<BottomNavBarProps> = ({ currentView, setView }) => {
     return (
-        // Z-index updated to 20 to match MobileHeader
         <nav className="fixed bottom-0 left-0 right-0 bg-white dark:bg-slate-800 border-t border-slate-200 dark:border-slate-700 shadow-lg md:hidden z-20 no-print">
             <div className="flex justify-around items-center h-16 pb-[env(safe-area-inset-bottom)]">
                 {navItems.map(item => {

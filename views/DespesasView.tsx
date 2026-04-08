@@ -1,5 +1,4 @@
-// views/DespesasView.tsx
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { Expense } from '../types';
 import PageHeader from '../components/PageHeader';
 import { PlusIcon } from '../components/icons/PlusIcon';
@@ -9,6 +8,8 @@ import { JukeboxIcon } from '../components/icons/JukeboxIcon';
 import { CraneIcon } from '../components/icons/CraneIcon';
 import { CalculatorIcon } from '../components/icons/CalculatorIcon';
 import { safeParseFloat } from '../utils';
+import { usePagination } from '../hooks/usePagination';
+import { InfiniteScrollTrigger } from '../components/InfiniteScrollTrigger';
 
 interface DespesasViewProps {
   expenses: Expense[];
@@ -108,6 +109,18 @@ const DespesasView: React.FC<DespesasViewProps> = ({ expenses, onAddExpense, onD
     });
   }, [expenses, sortKey, sortDirection, dateRange]);
   
+  const { 
+    slicedItems: slicedExpenses, 
+    loadMore, 
+    hasMore, 
+    reset 
+  } = usePagination(sortedExpenses, 15);
+
+  // Reset pagination when filtering or sorting
+  useEffect(() => {
+    reset();
+  }, [dateRange, sortKey, sortDirection, reset]);
+  
   const handleSort = useCallback((key: SortKey) => {
     if (sortKey === key) {
       setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
@@ -170,7 +183,12 @@ const DespesasView: React.FC<DespesasViewProps> = ({ expenses, onAddExpense, onD
       
       {/* Mobile Card View */}
       <div className="md:hidden space-y-3">
-        {sortedExpenses.length > 0 ? sortedExpenses.map(renderExpenseCard) : <p className="text-center py-10 text-slate-500 dark:text-slate-400">Nenhuma despesa registrada.</p>}
+        {slicedExpenses.length > 0 ? (
+            <>
+                {slicedExpenses.map(renderExpenseCard)}
+                <InfiniteScrollTrigger onIntersect={loadMore} hasMore={hasMore} />
+            </>
+        ) : <p className="text-center py-10 text-slate-500 dark:text-slate-400">Nenhuma despesa registrada.</p>}
       </div>
 
       {/* Desktop Table View */}
@@ -184,17 +202,26 @@ const DespesasView: React.FC<DespesasViewProps> = ({ expenses, onAddExpense, onD
               <th scope="col" className="px-6 py-3 text-center">Ações</th>
           </tr></thead>
           <tbody>
-            {sortedExpenses.length > 0 ? sortedExpenses.map(expense => (
-              <tr key={expense.id} className="bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700/50">
-                <td className="px-6 py-4">{new Date(expense.date).toLocaleDateString('pt-BR')}</td>
-                <td className="px-6 py-4 font-medium text-slate-900 dark:text-white break-words">{expense.description}</td>
-                <td className="px-6 py-4"><CategoryDisplay category={expense.category} /></td>
-                <td className="px-6 py-4 text-right font-mono text-red-600 dark:text-red-400">
-                    {areValuesHidden ? 'R$ •••,••' : `R$ ${expense.amount.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
-                </td>
-                <td className="px-6 py-4 text-center"><button onClick={() => onDeleteExpense(expense.id)} className="text-slate-400 hover:text-red-500" title="Excluir Despesa"><TrashIcon className="w-5 h-5" /></button></td>
-              </tr>
-            )) : (
+            {slicedExpenses.length > 0 ? (
+                <>
+                    {slicedExpenses.map(expense => (
+                      <tr key={expense.id} className="bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700/50">
+                        <td className="px-6 py-4">{new Date(expense.date).toLocaleDateString('pt-BR')}</td>
+                        <td className="px-6 py-4 font-medium text-slate-900 dark:text-white break-words">{expense.description}</td>
+                        <td className="px-6 py-4"><CategoryDisplay category={expense.category} /></td>
+                        <td className="px-6 py-4 text-right font-mono text-red-600 dark:text-red-400">
+                            {areValuesHidden ? 'R$ •••,••' : `R$ ${expense.amount.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                        </td>
+                        <td className="px-6 py-4 text-center"><button onClick={() => onDeleteExpense(expense.id)} className="text-slate-400 hover:text-red-500" title="Excluir Despesa"><TrashIcon className="w-5 h-5" /></button></td>
+                      </tr>
+                    ))}
+                    <tr>
+                        <td colSpan={5}>
+                             <InfiniteScrollTrigger onIntersect={loadMore} hasMore={hasMore} />
+                        </td>
+                    </tr>
+                </>
+            ) : (
               <tr><td colSpan={5} className="text-center py-16 text-slate-500 dark:text-slate-400">Nenhuma despesa registrada.</td></tr>
             )}
           </tbody>

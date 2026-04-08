@@ -23,6 +23,7 @@ const AddCustomerForm: React.FC<AddCustomerFormProps> = ({ customers, onAddCusto
         numero: eq.numero || '',
         relogioNumero: eq.relogioNumero || '',
         relogioAnterior: Number(eq.relogioAnterior) || 0,
+        herokuId: eq.herokuId,
       };
 
       if (eq.type === 'mesa') {

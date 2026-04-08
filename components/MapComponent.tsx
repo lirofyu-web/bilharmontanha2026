@@ -3,6 +3,8 @@ import { Customer } from '../types';
 import ReactDOMServer from 'react-dom/server';
 import { VisitedIcon } from './icons/VisitedIcon';
 import { NotVisitedIcon } from './icons/NotVisitedIcon';
+import L from 'leaflet';
+import 'leaflet.markercluster';
 
 type GeocodedCustomer = Customer & { latitude: number; longitude: number; };
 
@@ -19,8 +21,6 @@ const MapComponent: React.FC<MapComponentProps> = ({ customers, selectedCustomer
   const markersLayer = useRef<any | null>(null); // L.MarkerClusterGroup
   const routeLayer = useRef<any | null>(null); // L.LayerGroup for polylines
   const markerRefs = useRef<Record<string, any>>({}); // Record<string, L.Marker>
-
-  const L = (window as any).L;
 
   useEffect(() => {
     if (!mapRef.current || mapInstance.current || !L) return;
@@ -70,7 +70,7 @@ const MapComponent: React.FC<MapComponentProps> = ({ customers, selectedCustomer
         mapInstance.current = null;
       }
     };
-  }, [L]);
+  }, []);
 
   useEffect(() => {
     if (!markersLayer.current || !mapInstance.current || !L) return;
@@ -135,19 +135,19 @@ const MapComponent: React.FC<MapComponentProps> = ({ customers, selectedCustomer
     } else {
         mapInstance.current.setView([-14.235, -51.9253], 4);
     }
-  }, [customers, L, onMarkerClick, selectedCustomerId, optimizedRoute]);
+  }, [customers, onMarkerClick, selectedCustomerId, optimizedRoute]);
 
   useEffect(() => {
       if (!routeLayer.current || !mapInstance.current || !L) return;
       routeLayer.current.clearLayers();
 
       if (optimizedRoute && optimizedRoute.length > 1) {
-          const latLngs = optimizedRoute.map(c => [c.latitude, c.longitude]);
+          const latLngs = optimizedRoute.map(c => [c.latitude, c.longitude] as [number, number]);
           const polyline = L.polyline(latLngs, { color: '#fb923c', weight: 5, opacity: 0.8 });
           routeLayer.current.addLayer(polyline);
           mapInstance.current.fitBounds(polyline.getBounds(), { padding: [50, 50] });
       }
-  }, [optimizedRoute, L]);
+  }, [optimizedRoute]);
 
 
   useEffect(() => {
@@ -177,7 +177,7 @@ const MapComponent: React.FC<MapComponentProps> = ({ customers, selectedCustomer
              }, 100);
         });
     }
-  }, [selectedCustomerId, L]);
+  }, [selectedCustomerId]);
 
   return (
     <div className="bg-slate-200 dark:bg-slate-800 rounded-lg shadow-lg border border-slate-200 dark:border-slate-700 h-full w-full flex flex-col relative z-0">

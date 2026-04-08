@@ -3,31 +3,12 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-    <title>Dashboard - Montanha Bilhar e Jukebox</title>
+    <title>PIX MONTANHA</title>
     
     <meta name="description" content="Gerenciamento de locação de mesas de bilhar, jukebox e gruas." />
     <link rel="manifest" href="/manifest.json" />
     <meta name="theme-color" content="#84cc16" />
     <link rel="apple-touch-icon" href="/icon-192x192.png">
-    <link rel="apple-touch-icon" sizes="152x152" href="/icon-152x152.png">
-    <link rel="apple-touch-icon" sizes="144x144" href="/icon-144x144.png">
-    <link rel="apple-touch-icon" sizes="96x96" href="/icon-96x96.png">
-    <link rel="apple-touch-icon" sizes="72x72" href="/icon-72x72.png">
-
-
-    <link rel="preload" href="/index.tsx" as="script" crossOrigin="anonymous">
-    
-    <script src="https://cdn.tailwindcss.com" defer></script>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;900&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin=""/>
-    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.css" />
-    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.Default.css" />
-    
-    <!-- jsPDF and html2canvas for PDF Generation -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js" crossorigin="anonymous" referrerpolicy="no-referrer" defer></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" crossorigin="anonymous" referrerpolicy="no-referrer" defer></script>
 
     <script>
       // Prevents flash of unstyled content (FOUC) by applying the theme before the page loads.
@@ -36,151 +17,9 @@
       } else {
         document.documentElement.classList.add('dark')
       }
-      // Configure Tailwind to use the 'dark' class for dark mode
-      tailwind.config = {
-        darkMode: 'class',
-      }
     </script>
-    <style>
-      :root {
-        --color-primary: #84cc16;
-        --color-primary-hover: #65a30d;
-        --color-primary-text: #ffffff;
-
-        --color-accent: #06b6d4;
-        --color-accent-hover: #0891b2;
-        --color-accent-text: #ffffff;
-      }
-      html, body, #root {
-        height: 100%;
-        overscroll-behavior-y: none; /* Prevents pull-to-refresh on mobile which feels native */
-      }
-      body {
-        font-family: 'Inter', sans-serif;
-        background-color: #f1f5f9; /* slate-100 */
-      }
-      .dark body {
-        background-color: #0f172a; /* slate-900 */
-      }
-      /* Custom Marker Cluster Styles */
-      .marker-cluster-small {
-        background-color: rgba(30, 136, 229, 0.6); /* Blueish, semi-transparent */
-      }
-      .marker-cluster-small div {
-        background-color: rgba(30, 136, 229, 0.9);
-        color: #fff;
-      }
-      .marker-cluster-medium {
-        background-color: rgba(245, 124, 0, 0.6); /* Orangish */
-      }
-      .marker-cluster-medium div {
-        background-color: rgba(245, 124, 0, 0.9);
-        color: #fff;
-      }
-      .marker-cluster-large {
-        background-color: rgba(211, 47, 47, 0.6); /* Redish */
-      }
-      .marker-cluster-large div {
-        background-color: rgba(211, 47, 47, 0.9);
-        color: #fff;
-      }
-
-      /* Custom DivIcon Marker Styles */
-      .custom-marker {
-        transition: transform 0.2s ease-out;
-        will-change: transform;
-      }
-      .custom-marker.selected-marker {
-        z-index: 1000 !important;
-        animation: pulse 1.5s infinite;
-      }
-
-      @keyframes pulse {
-        0% {
-          transform: scale(1);
-          filter: drop-shadow(0 0 2px #fff);
-        }
-        50% {
-          transform: scale(1.2);
-          filter: drop-shadow(0 0 10px var(--color-accent));
-        }
-        100% {
-          transform: scale(1);
-          filter: drop-shadow(0 0 2px #fff);
-        }
-      }
-
-      /* Pulsing indicator animation */
-      @keyframes pulse-indicator {
-        0%, 100% {
-          transform: scale(1);
-          filter: drop-shadow(0 0 2px currentColor);
-        }
-        50% {
-          transform: scale(1.15);
-          filter: drop-shadow(0 0 6px currentColor);
-        }
-      }
-      .pulse-indicator {
-        animation: pulse-indicator 2s infinite ease-in-out;
-        will-change: transform, filter;
-      }
-
-      /* Blinking colors animation */
-      @keyframes blink-colors {
-        0%, 100% { background-color: #84cc16; } /* lime-500 */
-        33% { background-color: #ef4444; } /* red-500 */
-        66% { background-color: #f59e0b; } /* amber-500 */
-      }
-      .animate-blink-colors {
-        animation: blink-colors 1s infinite;
-      }
-
-
-      /* Hide number input spinners */
-      input::-webkit-outer-spin-button,
-      input::-webkit-inner-spin-button {
-        -webkit-appearance: none;
-        margin: 0;
-      }
-      input[type=number] {
-        -moz-appearance: textfield;
-        appearance: textfield;
-      }
-
-      /* Print-specific styles */
-      @media print {
-        .no-print {
-          display: none !important;
-        }
-        body {
-          background: #ffffff !important;
-          padding-top: 0 !important;
-        }
-        body::before {
-            display: none;
-        }
-        /* Hide everything in the app's root div except the print overlay */
-        body > #root > div > *:not(.print-overlay) {
-            display: none !important;
-        }
-        /* Style the overlay and its content for printing */
-        .print-overlay {
-            position: static !important;
-            background: none !important;
-            display: block !important;
-            border: none !important;
-        }
-        .print-content {
-            overflow: visible !important;
-        }
-      }
-    </style>
-    <script defer src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
-    <script defer src="https://unpkg.com/leaflet.markercluster@1.4.1/dist/leaflet.markercluster.js"></script>
-
-  <link rel="stylesheet" href="/index.css">
-</head>
+    <link rel="stylesheet" href="/index.css">
+  </head>
   <body class="transition-colors duration-300">
     <div id="root"></div>
     <script type="module" src="/index.tsx"></script>

@@ -1,0 +1,17 @@
+{
+  "id": "66ff888a-f0f7-4544-b3b3-88b096dd98aa",
+  "pessoaId": "aee34f07-f60a-4ea2-9208-6aeeb9d7a403",
+  "clienteId": "18d614ac-92fa-4a73-b250-ef7ec3090b3e",
+  "nome": "GRUA 16",
+  "descricao": "Itaporanga ",
+  "estoque": 104,
+  "store_id": "65069365",
+  "maquininha_serial": "143",
+  "valorDoPix": "0",
+  "dataInclusao": "2024-12-28T22:53:27.692Z",
+  "ultimoPagamentoRecebido": "2026-04-05T23:12:27.071Z",
+  "ultimaRequisicao": "2026-04-06T01:32:26.284Z",
+  "status": "OFFLINE",
+  "pulso": "1",
+  "nivelDeSinal": null
+}

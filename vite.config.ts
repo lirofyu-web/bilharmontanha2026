@@ -9,6 +9,19 @@ export default defineConfig(({ mode }) => {
       server: {
         port: 3000,
         host: '0.0.0.0',
+        watch: {
+          usePolling: false,
+          ignored: [
+            '**/android/**',
+            '**/ios/**',
+            '**/node_modules/**',
+            '**/.git/**',
+            '**/dist/**'
+          ]
+        },
+        hmr: {
+          overlay: true
+        }
       },
       plugins: [
         react(),

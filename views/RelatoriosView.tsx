@@ -261,57 +261,69 @@ const RelatoriosView: React.FC<RelatoriosViewProps> = ({ customers, billings, ex
     setDateRange(prev => ({ ...prev, [name]: value }));
   }, []);
 
-  const stats = useMemo(() => {
-    const start = dateRange.start ? new Date(dateRange.start + 'T00:00:00') : null;
-    const end = dateRange.end ? new Date(dateRange.end + 'T23:59:59') : null;
-    
-    const filterByDate = (itemDateStr: Date) => {
-        const itemDate = new Date(itemDateStr);
-        if (start && itemDate < start) return false;
-        if (end && itemDate > end) return false;
-        return true;
-    };
+    const stats = useMemo(() => {
+        const start = dateRange.start ? new Date(dateRange.start + 'T00:00:00') : null;
+        const end = dateRange.end ? new Date(dateRange.end + 'T23:59:59') : null;
+        
+        const filterByDate = (itemDateStr: Date) => {
+            const itemDate = new Date(itemDateStr);
+            if (start && itemDate < start) return false;
+            if (end && itemDate > end) return false;
+            return true;
+        };
 
-    const periodBillings = billings.filter(b => filterByDate(b.settledAt));
-    const periodDebtPayments = debtPayments.filter(p => filterByDate(p.paidAt));
-    const periodExpenses = expenses.filter(e => filterByDate(e.date));
+        const periodBillings = billings.filter(b => filterByDate(b.settledAt));
+        const periodDebtPayments = debtPayments.filter(p => filterByDate(p.paidAt));
+        const periodExpenses = expenses.filter(e => filterByDate(e.date));
 
-    // Debt payments breakdown
-    const debtReceivedDinheiro = periodDebtPayments.reduce((sum, p) => sum + (p.amountPaidDinheiro || 0), 0);
-    const debtReceivedPix = periodDebtPayments.reduce((sum, p) => sum + (p.amountPaidPix || 0), 0);
-    const totalDebtReceived = debtReceivedDinheiro + debtReceivedPix;
+        // Debt payments breakdown
+        const debtReceivedDinheiro = periodDebtPayments.reduce((sum, p) => sum + (p.amountPaidDinheiro || 0), 0);
+        const debtReceivedPix = periodDebtPayments.reduce((sum, p) => sum + (p.amountPaidPix || 0), 0);
+        const totalDebtReceived = debtReceivedDinheiro + debtReceivedPix;
 
-    // Filtered Billings & Expenses by Category
-    const periodMesaBillings = periodBillings.filter(b => b.equipmentType === 'mesa');
-    const periodJukeboxBillings = periodBillings.filter(b => b.equipmentType === 'jukebox');
-    const periodGruaBillings = periodBillings.filter(b => b.equipmentType === 'grua');
-    
-    const periodExpensesMesa = periodExpenses.filter(e => e.category === 'mesa').reduce((sum, e) => sum + e.amount, 0);
-    const periodExpensesJukebox = periodExpenses.filter(e => e.category === 'jukebox').reduce((sum, e) => sum + e.amount, 0);
-    const periodExpensesGrua = periodExpenses.filter(e => e.category === 'grua').reduce((sum, e) => sum + e.amount, 0);
-    
-    // Revenue for Mesas (direct payments only)
-    const revenueMesaDinheiro = periodMesaBillings.reduce((sum, b) => sum + (b.valorPagoDinheiro || 0), 0);
-    const revenueMesaPix = periodMesaBillings.reduce((sum, b) => sum + (b.valorPagoPix || 0), 0);
-    
-    // Revenue for Jukebox (direct payments only)
-    const revenueJukeboxDinheiro = periodJukeboxBillings.reduce((sum, b) => sum + (b.valorPagoDinheiro || 0), 0);
-    const revenueJukeboxPix = periodJukeboxBillings.reduce((sum, b) => sum + (b.valorPagoPix || 0), 0);
+        // Categorized Debt Payments
+        const periodMesaDebts = periodDebtPayments.filter(p => p.equipmentType === 'mesa');
+        const periodJukeboxDebts = periodDebtPayments.filter(p => p.equipmentType === 'jukebox');
+        const periodGruaDebts = periodDebtPayments.filter(p => p.equipmentType === 'grua');
 
-    // Revenue for Gruas
-    const revenueGruaPix = periodGruaBillings.reduce((sum, b) => sum + (b.recebimentoPix || 0), 0);
-    const revenueGruaEspecie = periodGruaBillings.reduce((sum, b) => sum + (b.recebimentoEspecie || 0), 0);
-    const totalAluguelPagoGrua = periodGruaBillings.reduce((sum, b) => sum + (b.aluguelValor || 0), 0);
-    const revenueGruaFirma = periodGruaBillings.reduce((sum, b) => sum + b.valorTotal, 0);
-    
-    // Filtered expenses for the new report
-    const filteredPeriodExpenses = periodExpenses.filter(e => {
-        if (expenseCategory === 'all') return true;
-        if (expenseCategory === 'outra') return !['mesa', 'jukebox', 'grua'].includes(e.category);
-        return e.category === expenseCategory;
-    });
+        // Filtered Billings & Expenses by Category
+        const periodMesaBillings = periodBillings.filter(b => b.equipmentType === 'mesa');
+        const periodJukeboxBillings = periodBillings.filter(b => b.equipmentType === 'jukebox');
+        const periodGruaBillings = periodBillings.filter(b => b.equipmentType === 'grua');
+        
+        const periodExpensesMesa = periodExpenses.filter(e => e.category === 'mesa').reduce((sum, e) => sum + e.amount, 0);
+        const periodExpensesJukebox = periodExpenses.filter(e => e.category === 'jukebox').reduce((sum, e) => sum + e.amount, 0);
+        const periodExpensesGrua = periodExpenses.filter(e => e.category === 'grua').reduce((sum, e) => sum + e.amount, 0);
+        
+        // Revenue for Mesas (billings + debts)
+        const revenueMesaDinheiro = periodMesaBillings.reduce((sum, b) => sum + (b.valorPagoDinheiro || 0), 0) + 
+                                   periodMesaDebts.reduce((sum, p) => sum + (p.amountPaidDinheiro || 0), 0);
+        const revenueMesaPix = periodMesaBillings.reduce((sum, b) => sum + (b.valorPagoPix || 0), 0) +
+                               periodMesaDebts.reduce((sum, p) => sum + (p.amountPaidPix || 0), 0);
+        
+        // Revenue for Jukebox (billings + debts)
+        const revenueJukeboxDinheiro = periodJukeboxBillings.reduce((sum, b) => sum + (b.valorPagoDinheiro || 0), 0) +
+                                      periodJukeboxDebts.reduce((sum, p) => sum + (p.amountPaidDinheiro || 0), 0);
+        const revenueJukeboxPix = periodJukeboxBillings.reduce((sum, b) => sum + (b.valorPagoPix || 0), 0) +
+                                  periodJukeboxDebts.reduce((sum, p) => sum + (p.amountPaidPix || 0), 0);
 
-    const totalFilteredExpenses = filteredPeriodExpenses.reduce((sum, e) => sum + e.amount, 0);
+        // Revenue for Gruas (billings + debts)
+        const revenueGruaPix = periodGruaBillings.reduce((sum, b) => sum + (b.recebimentoPix || 0), 0) +
+                               periodGruaDebts.reduce((sum, p) => sum + (p.amountPaidPix || 0), 0);
+        const revenueGruaEspecie = periodGruaBillings.reduce((sum, b) => sum + (b.recebimentoEspecie || 0), 0) +
+                                 periodGruaDebts.reduce((sum, p) => sum + (p.amountPaidDinheiro || 0), 0);
+        const totalAluguelPagoGrua = periodGruaBillings.reduce((sum, b) => sum + (b.aluguelValor || 0), 0);
+        const revenueGruaFirma = periodGruaBillings.reduce((sum, b) => sum + b.valorTotal, 0) +
+                                periodGruaDebts.reduce((sum, p) => sum + p.amountPaid, 0);
+        
+        // Filtered expenses for the new report
+        const filteredPeriodExpenses = periodExpenses.filter(e => {
+            if (expenseCategory === 'all') return true;
+            if (expenseCategory === 'outra') return !['mesa', 'jukebox', 'grua'].includes(e.category);
+            return e.category === expenseCategory;
+        });
+
+        const totalFilteredExpenses = filteredPeriodExpenses.reduce((sum, e) => sum + e.amount, 0);
     
     return {
       revenueMesaDinheiro,
@@ -443,6 +455,7 @@ const RelatoriosView: React.FC<RelatoriosViewProps> = ({ customers, billings, ex
         return;
     }
     const data = [...stats.periodMesaBillings].sort((a, b) => new Date(b.settledAt).getTime() - new Date(a.settledAt).getTime());
+    const debtData = stats.periodDebtPayments.filter(p => p.equipmentType === 'mesa').sort((a, b) => new Date(b.paidAt).getTime() - new Date(a.paidAt).getTime());
     const customerMap = new Map<string, Customer>(customers.map(c => [c.id, c]));
     const revenueMesaTotal = stats.revenueMesaDinheiro + stats.revenueMesaPix;
 
@@ -451,68 +464,76 @@ const RelatoriosView: React.FC<RelatoriosViewProps> = ({ customers, billings, ex
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; font-size: 10pt; color: #333; }
         @page { size: A4 landscape; margin: 15mm; }
         .header { text-align: center; margin-bottom: 20px; }
-        h3 { text-align: left; font-size: 14pt; color: #333; margin-bottom: 10px; }
-        table { width: 100%; border-collapse: collapse; margin: 0 auto 20px auto; font-size: 10pt; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
-        th, td { border: 1px solid #e2e8f0; padding: 8px 10px; text-align: center; }
-        th { background-color: #ecfeff; color: #0e7490; font-weight: bold; text-transform: uppercase; }
+        h3 { text-align: left; font-size: 14pt; color: #333; margin: 20px 0 10px 0; border-left: 4px solid #0e7490; padding-left: 10px; }
+        table { width: 100%; border-collapse: collapse; margin: 0 auto 20px auto; font-size: 9pt; box-shadow: 0 1px 4px rgba(0,0,0,0.05); }
+        th, td { border: 1px solid #e2e8f0; padding: 6px 8px; text-align: center; }
+        th { background-color: #ecfeff; color: #0e7490; font-weight: bold; text-transform: uppercase; font-size: 8pt; }
         tr:nth-child(even) { background-color: #f8fafc; }
-        .currency { text-align: right; font-family: 'Courier New', monospace; }
+        .currency { text-align: right; font-family: 'Courier New', monospace; font-weight: bold; }
         .text-left { text-align: left; }
         .no-records { padding: 20px; text-align: center; color: #777; font-style: italic; }
         
         .summary-section { margin-top: 30px; text-align: left; page-break-inside: avoid; }
-        .summary-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-        .summary-card { padding: 12px; border-radius: 8px; border: 1px solid #ddd; background-color: #f9f9f9 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-        .summary-card .label { display: block; font-size: 9pt; color: #555; margin-bottom: 4px; font-weight: bold; text-transform: uppercase; }
-        .summary-card .value { display: block; font-size: 15pt; font-weight: bold; font-family: 'Courier New', monospace; }
-        .grid-col-span-2 { grid-column: span 2; }
+        .summary-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+        .summary-box { padding: 12px; border-radius: 8px; border: 1px solid #ddd; background-color: #fff !important; }
+        .summary-box .label { display: block; font-size: 8pt; color: #64748b; margin-bottom: 4px; font-weight: bold; text-transform: uppercase; }
+        .summary-box .value { display: block; font-size: 14pt; font-weight: bold; }
         
-        .summary-card--dinheiro { background-color: #e0f2fe !important; border-color: #7dd3fc !important; }
-        .summary-card--dinheiro .value { color: #0369a1 !important; }
-        .summary-card--pix { background-color: #f7fee7 !important; border-color: #bef264 !important; }
-        .summary-card--pix .value { color: #4d7c0f !important; }
-        .summary-card--total { background-color: #dcfce7 !important; border-color: #4ade80 !important; grid-column: span 2; }
-        .summary-card--total .value { color: #15803d !important; font-size: 16pt; }
-        .summary-card--despesa { background-color: #fee2e2 !important; border-color: #fca5a5 !important; grid-column: span 2; }
-        .summary-card--despesa .value { color: #b91c1c !important; }
-        .summary-card--lucro { background-color: #dcfce7 !important; border-color: #4ade80 !important; grid-column: span 2; }
-        .summary-card--lucro .value { color: #15803d !important; font-size: 18pt; }
-        .summary-card--info { background-color: #f1f5f9 !important; border-color: #cbd5e1 !important; grid-column: span 2; }
-        .summary-card--info .value { color: #475569 !important; }
+        .bg-dinheiro { border-left: 4px solid #0284c7 !important; color: #0369a1; }
+        .bg-pix { border-left: 4px solid #65a30d !important; color: #4d7c0f; }
+        .bg-total { border-left: 4px solid #166534 !important; background-color: #f0fdf4 !important; color: #15803d; }
+        .bg-despesa { border-left: 4px solid #dc2626 !important; background-color: #fef2f2 !important; color: #b91c1c; }
+        .bg-lucro { border-left: 4px solid #15803d !important; background-color: #dcfce7 !important; color: #115e59; }
       </style>
-      <h3>Receitas - Mesas de Sinuca</h3>
+      
+      <h3>1. Cobranças Realizadas (Mesas)</h3>
       <table>
         <thead>
           <tr>
-            <th>Data</th> <th class="text-left">Cliente</th> <th class="text-left">Cidade</th> <th class="currency">Rel. Ant.</th> <th class="currency">Rel. Atual</th> <th class="currency">Jogadas</th> <th>Pagamento</th> <th class="currency">Receita</th>
+            <th>Data</th> <th class="text-left">Cliente</th> <th class="text-left">Cidade</th> <th class="currency">Rel. Ant.</th> <th class="currency">Rel. Atual</th> <th class="currency">Jogadas</th> <th>Pagamento</th> <th class="currency">Valor</th>
           </tr>
         </thead>
         <tbody>
           ${data.length > 0 ? data.map(b => {
-            const customer = customerMap.get(b.customerId);
-            const cidade = customer ? customer.cidade : 'N/A';
-            let transactionRevenue = (b.valorPagoDinheiro || 0) + (b.valorPagoPix || 0);
-            const paymentParts = [];
-
-            if (b.valorPagoDinheiro && b.valorPagoDinheiro > 0) paymentParts.push(`Dinheiro: R$ ${b.valorPagoDinheiro.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
-            if (b.valorPagoPix && b.valorPagoPix > 0) paymentParts.push(`PIX: R$ ${b.valorPagoPix.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
-            if (b.valorDebitoNegativo && b.valorDebitoNegativo > 0) paymentParts.push(`<span style="color: #D32F2F;">Negativo: R$ ${b.valorDebitoNegativo.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>`);
-            if (paymentParts.length === 0 && b.paymentMethod !== 'pending_payment') paymentParts.push('R$ 0,00');
-
-            return `<tr><td>${new Date(b.settledAt).toLocaleDateString('pt-BR')}</td><td class="text-left">${b.customerName}</td><td class="text-left">${cidade}</td><td class="currency">${b.relogioAnterior}</td><td class="currency">${b.relogioAtual}</td><td class="currency">${b.partidasJogadas}</td><td class="text-left" style="font-size: 8pt;">${paymentParts.join('<br>')}</td><td class="currency" style="color: #166534; font-weight: bold;">R$ ${transactionRevenue.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td></tr>`;
+             const customer = customerMap.get(b.customerId);
+             let transactionRevenue = (b.valorPagoDinheiro || 0) + (b.valorPagoPix || 0);
+             return `<tr><td>${new Date(b.settledAt).toLocaleDateString('pt-BR')}</td><td class="text-left">${b.customerName}</td><td class="text-left">${customer?.cidade || 'N/A'}</td><td class="currency">${b.relogioAnterior}</td><td class="currency">${b.relogioAtual}</td><td class="currency">${b.partidasJogadas}</td><td class="text-left" style="font-size: 8pt;">Din: R$${(b.valorPagoDinheiro || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}<br>Pix: R$${(b.valorPagoPix || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td><td class="currency">R$ ${transactionRevenue.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td></tr>`;
           }).join('') : '<tr><td colspan="8" class="no-records">Nenhuma cobrança no período.</td></tr>'}
         </tbody>
       </table>
 
+      ${debtData.length > 0 ? `
+      <h3>2. Dívidas Recebidas (Mesa)</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>Data</th> <th class="text-left">Cliente</th> <th class="text-left">Cidade</th> <th>Forma de Pagto.</th> <th class="currency">Valor Recebido</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${debtData.map(p => {
+            const customer = customerMap.get(p.customerId);
+            return `<tr><td>${new Date(p.paidAt).toLocaleDateString('pt-BR')}</td><td class="text-left">${p.customerName}</td><td class="text-left">${customer?.cidade || 'N/A'}</td><td class="text-left uppercase">${p.paymentMethod}</td><td class="currency" style="color: #0369a1;">R$ ${p.amountPaid.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td></tr>`;
+          }).join('')}
+        </tbody>
+        <tfoot>
+          <tr>
+            <td colspan="4" class="text-right font-bold">TOTAL DÍVIDA RECEBIDA (MESA)</td>
+            <td class="currency" style="background-color: #e0f2fe;">R$ ${debtData.reduce((s, p) => s + p.amountPaid, 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+          </tr>
+        </tfoot>
+      </table>
+      ` : ''}
+
       <div class="summary-section">
-        <h3>Fechamento Financeiro</h3>
+        <h3>Resumo Financeiro - Mesas</h3>
         <div class="summary-grid">
-            <div class="summary-card summary-card--dinheiro"><span class="label">Total Dinheiro (Cobranças)</span><span class="value">R$ ${stats.revenueMesaDinheiro.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>
-            <div class="summary-card summary-card--pix"><span class="label">Total PIX (Cobranças)</span><span class="value">R$ ${stats.revenueMesaPix.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>
-            <div class="summary-card summary-card--total"><span class="label">(=) Total Arrecadado (Caixa)</span><span class="value">R$ ${revenueMesaTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>
-            <div class="summary-card summary-card--despesa"><span class="label">(-) Total Despesas (Mesas)</span><span class="value">- R$ ${stats.periodExpensesMesa.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>
-            <div class="summary-card summary-card--lucro"><span class="label">(=) Lucro Líquido</span><span class="value">R$ ${(revenueMesaTotal - stats.periodExpensesMesa).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>
-            <div class="summary-card summary-card--info"><span class="label">Depósito (Informativo)</span><span class="value">R$ ${deposito.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>
+            <div class="summary-box bg-dinheiro"><span class="label">Total Dinheiro</span><span class="value">R$ ${stats.revenueMesaDinheiro.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>
+            <div class="summary-box bg-pix"><span class="label">Total PIX</span><span class="value">R$ ${stats.revenueMesaPix.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>
+            <div class="summary-box bg-total"><span class="label">Total Arrecadado</span><span class="value">R$ ${revenueMesaTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>
+            <div class="summary-box bg-despesa"><span class="label">Total Despesas</span><span class="value">- R$ ${stats.periodExpensesMesa.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>
+            <div class="summary-box bg-lucro"><span class="label">Lucro Líquido</span><span class="value">R$ ${(revenueMesaTotal - stats.periodExpensesMesa).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>
+            <div class="summary-box"><span class="label">Depósito (Info)</span><span class="value">R$ ${deposito.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>
         </div>
       </div>
     `;
@@ -521,6 +542,8 @@ const RelatoriosView: React.FC<RelatoriosViewProps> = ({ customers, billings, ex
   }, [stats, printReport, customers, areValuesHidden, showNotification]);
   
     const handlePrintMesaReportThermal = useCallback((deposito: number) => {
+    const mesaDebts = stats.periodDebtPayments.filter(p => p.equipmentType === 'mesa');
+    const totalDebts = mesaDebts.reduce((s, p) => s + p.amountPaid, 0);
     const revenueMesaTotal = stats.revenueMesaDinheiro + stats.revenueMesaPix;
     const lucroLiquido = revenueMesaTotal - stats.periodExpensesMesa;
 
@@ -535,11 +558,12 @@ const RelatoriosView: React.FC<RelatoriosViewProps> = ({ customers, billings, ex
       .map(b => ({ ...b, revenue: (b.valorPagoDinheiro || 0) + (b.valorPagoPix || 0) }));
 
     const summary = [
-      { label: 'Total Dinheiro', value: `R$ ${stats.revenueMesaDinheiro.toFixed(2)}` },
-      { label: 'Total PIX', value: `R$ ${stats.revenueMesaPix.toFixed(2)}` },
-      { label: 'Total Arrecadado', value: `R$ ${revenueMesaTotal.toFixed(2)}` },
-      { label: '(-) Despesas', value: `- R$ ${stats.periodExpensesMesa.toFixed(2)}` },
-      { label: '(=) Lucro Líquido', value: `R$ ${lucroLiquido.toFixed(2)}` },
+      { label: 'Cobranças (Relógios)', value: `R$ ${(revenueMesaTotal - totalDebts).toFixed(2)}` },
+      { label: 'Dívidas Recebidas', value: `R$ ${totalDebts.toFixed(2)}` },
+      { label: '---', value: '' },
+      { label: 'TOTAL ARRECADADO', value: `R$ ${revenueMesaTotal.toFixed(2)}` },
+      { label: 'Despesas', value: `- R$ ${stats.periodExpensesMesa.toFixed(2)}` },
+      { label: 'LUCRO LÍQUIDO', value: `R$ ${lucroLiquido.toFixed(2)}` },
       { label: 'Depósito (Info)', value: `R$ ${deposito.toFixed(2)}` },
     ];
 
@@ -555,6 +579,7 @@ const RelatoriosView: React.FC<RelatoriosViewProps> = ({ customers, billings, ex
         return;
     }
     const data = [...stats.periodJukeboxBillings].sort((a, b) => new Date(b.settledAt).getTime() - new Date(a.settledAt).getTime());
+    const debtData = stats.periodDebtPayments.filter(p => p.equipmentType === 'jukebox').sort((a, b) => new Date(b.paidAt).getTime() - new Date(a.paidAt).getTime());
     const customerMap = new Map<string, Customer>(customers.map(c => [c.id, c]));
     const revenueJukeboxTotal = stats.revenueJukeboxDinheiro + stats.revenueJukeboxPix;
 
@@ -562,66 +587,76 @@ const RelatoriosView: React.FC<RelatoriosViewProps> = ({ customers, billings, ex
       <style>
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; font-size: 10pt; color: #333; }
         @page { size: A4 landscape; margin: 15mm; }
-        h3 { text-align: left; font-size: 14pt; color: #333; margin-bottom: 10px; }
-        table { width: 100%; border-collapse: collapse; margin: 0 auto 20px auto; font-size: 10pt; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
-        th, td { border: 1px solid #e2e8f0; padding: 8px 10px; text-align: center; }
-        th { background-color: #fdf2f8; color: #a21caf; font-weight: bold; text-transform: uppercase; }
+        h3 { text-align: left; font-size: 14pt; color: #333; margin: 20px 0 10px 0; border-left: 4px solid #a21caf; padding-left: 10px; }
+        table { width: 100%; border-collapse: collapse; margin: 0 auto 20px auto; font-size: 9pt; box-shadow: 0 1px 4px rgba(0,0,0,0.05); }
+        th, td { border: 1px solid #e2e8f0; padding: 6px 8px; text-align: center; }
+        th { background-color: #fdf2f8; color: #a21caf; font-weight: bold; text-transform: uppercase; font-size: 8pt; }
         tr:nth-child(even) { background-color: #f8fafc; }
-        .currency { text-align: right; font-family: 'Courier New', monospace; }
+        .currency { text-align: right; font-family: 'Courier New', monospace; font-weight: bold; }
         .text-left { text-align: left; }
         .no-records { padding: 20px; text-align: center; color: #777; font-style: italic; }
+        
         .summary-section { margin-top: 30px; text-align: left; page-break-inside: avoid; }
-        .summary-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-        .summary-card { padding: 12px; border-radius: 8px; border: 1px solid #ddd; background-color: #f9f9f9 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-        .summary-card .label { display: block; font-size: 9pt; color: #555; margin-bottom: 4px; font-weight: bold; text-transform: uppercase; }
-        .summary-card .value { display: block; font-size: 15pt; font-weight: bold; font-family: 'Courier New', monospace; }
-        .grid-col-span-2 { grid-column: span 2; }
-        .summary-card--dinheiro { background-color: #e0f2fe !important; border-color: #7dd3fc !important; }
-        .summary-card--dinheiro .value { color: #0369a1 !important; }
-        .summary-card--pix { background-color: #f7fee7 !important; border-color: #bef264 !important; }
-        .summary-card--pix .value { color: #4d7c0f !important; }
-        .summary-card--total { background-color: #dcfce7 !important; border-color: #4ade80 !important; grid-column: span 2; }
-        .summary-card--total .value { color: #15803d !important; font-size: 16pt; }
-        .summary-card--despesa { background-color: #fee2e2 !important; border-color: #fca5a5 !important; grid-column: span 2; }
-        .summary-card--despesa .value { color: #b91c1c !important; }
-        .summary-card--lucro { background-color: #dcfce7 !important; border-color: #4ade80 !important; grid-column: span 2; }
-        .summary-card--lucro .value { color: #15803d !important; font-size: 18pt; }
-        .summary-card--info { background-color: #f1f5f9 !important; border-color: #cbd5e1 !important; grid-column: span 2; }
-        .summary-card--info .value { color: #475569 !important; }
+        .summary-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+        .summary-box { padding: 12px; border-radius: 8px; border: 1px solid #ddd; background-color: #fff !important; }
+        .summary-box .label { display: block; font-size: 8pt; color: #64748b; margin-bottom: 4px; font-weight: bold; text-transform: uppercase; }
+        .summary-box .value { display: block; font-size: 14pt; font-weight: bold; }
+        
+        .bg-dinheiro { border-left: 4px solid #0284c7 !important; color: #0369a1; }
+        .bg-pix { border-left: 4px solid #65a30d !important; color: #4d7c0f; }
+        .bg-total { border-left: 4px solid #a21caf !important; background-color: #fdf2f8 !important; color: #701a75; }
+        .bg-despesa { border-left: 4px solid #dc2626 !important; background-color: #fef2f2 !important; color: #b91c1c; }
+        .bg-lucro { border-left: 4px solid #15803d !important; background-color: #dcfce7 !important; color: #115e59; }
       </style>
-      <h3>Receitas - Jukebox</h3>
+
+      <h3>1. Cobranças Realizadas (Jukebox)</h3>
       <table>
         <thead>
           <tr>
-            <th>Data</th> <th class="text-left">Cliente</th> <th class="text-left">Cidade</th> <th class="currency">Rel. Ant.</th> <th class="currency">Rel. Atual</th> <th>Pagamento</th> <th class="currency">Receita</th>
+            <th>Data</th> <th class="text-left">Cliente</th> <th class="text-left">Cidade</th> <th class="currency">Rel. Ant.</th> <th class="currency">Rel. Atual</th> <th>Pagamento</th> <th class="currency">Valor</th>
           </tr>
         </thead>
         <tbody>
           ${data.length > 0 ? data.map(b => {
             const customer = customerMap.get(b.customerId);
-            const cidade = customer ? customer.cidade : 'N/A';
             let transactionRevenue = (b.valorPagoDinheiro || 0) + (b.valorPagoPix || 0);
-            const paymentParts = [];
-
-            if (b.valorPagoDinheiro && b.valorPagoDinheiro > 0) paymentParts.push(`Dinheiro: R$ ${b.valorPagoDinheiro.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
-            if (b.valorPagoPix && b.valorPagoPix > 0) paymentParts.push(`PIX: R$ ${b.valorPagoPix.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
-            if (b.valorDebitoNegativo && b.valorDebitoNegativo > 0) paymentParts.push(`<span style="color: #D32F2F;">Negativo: R$ ${b.valorDebitoNegativo.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>`);
-            if (paymentParts.length === 0 && b.paymentMethod !== 'pending_payment') paymentParts.push('R$ 0,00');
-
-            return `<tr><td>${new Date(b.settledAt).toLocaleDateString('pt-BR')}</td><td class="text-left">${b.customerName}</td><td class="text-left">${cidade}</td><td class="currency">${b.relogioAnterior}</td><td class="currency">${b.relogioAtual}</td><td class="text-left" style="font-size: 8pt;">${paymentParts.join('<br>')}</td><td class="currency" style="color: #166534; font-weight: bold;">R$ ${transactionRevenue.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td></tr>`;
+            return `<tr><td>${new Date(b.settledAt).toLocaleDateString('pt-BR')}</td><td class="text-left">${b.customerName}</td><td class="text-left">${customer?.cidade || 'N/A'}</td><td class="currency">${b.relogioAnterior}</td><td class="currency">${b.relogioAtual}</td><td class="text-left" style="font-size: 8pt;">Din: R$${(b.valorPagoDinheiro || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}<br>Pix: R$${(b.valorPagoPix || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td><td class="currency">R$ ${transactionRevenue.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td></tr>`;
           }).join('') : '<tr><td colspan="7" class="no-records">Nenhuma cobrança no período.</td></tr>'}
         </tbody>
       </table>
+
+      ${debtData.length > 0 ? `
+      <h3>2. Dívidas Recebidas (Jukebox)</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>Data</th> <th class="text-left">Cliente</th> <th class="text-left">Cidade</th> <th>Forma de Pagto.</th> <th class="currency">Valor Recebido</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${debtData.map(p => {
+            const customer = customerMap.get(p.customerId);
+            return `<tr><td>${new Date(p.paidAt).toLocaleDateString('pt-BR')}</td><td class="text-left">${p.customerName}</td><td class="text-left">${customer?.cidade || 'N/A'}</td><td class="text-left uppercase">${p.paymentMethod}</td><td class="currency" style="color: #a21caf;">R$ ${p.amountPaid.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td></tr>`;
+          }).join('')}
+        </tbody>
+        <tfoot>
+          <tr>
+            <td colspan="4" class="text-right font-bold">TOTAL DÍVIDA RECEBIDA (JUKEBOX)</td>
+            <td class="currency" style="background-color: #fdf2f8;">R$ ${debtData.reduce((s, p) => s + p.amountPaid, 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+          </tr>
+        </tfoot>
+      </table>
+      ` : ''}
       
       <div class="summary-section">
-        <h3>Fechamento Financeiro</h3>
+        <h3>Resumo Financeiro - Jukebox</h3>
         <div class="summary-grid">
-            <div class="summary-card summary-card--dinheiro"><span class="label">Total Dinheiro (Cobranças)</span><span class="value">R$ ${stats.revenueJukeboxDinheiro.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>
-            <div class="summary-card summary-card--pix"><span class="label">Total PIX (Cobranças)</span><span class="value">R$ ${stats.revenueJukeboxPix.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>
-            <div class="summary-card summary-card--total"><span class="label">(=) Total Arrecadado (Caixa)</span><span class="value">R$ ${revenueJukeboxTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>
-            <div class="summary-card summary-card--despesa"><span class="label">(-) Total Despesas (Jukebox)</span><span class="value">- R$ ${stats.periodExpensesJukebox.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>
-            <div class="summary-card summary-card--lucro"><span class="label">(=) Lucro Líquido</span><span class="value">R$ ${(revenueJukeboxTotal - stats.periodExpensesJukebox).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>
-            <div class="summary-card summary-card--info"><span class="label">Depósito (Informativo)</span><span class="value">R$ ${deposito.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>
+            <div class="summary-box bg-dinheiro"><span class="label">Total Dinheiro</span><span class="value">R$ ${stats.revenueJukeboxDinheiro.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>
+            <div class="summary-box bg-pix"><span class="label">Total PIX</span><span class="value">R$ ${stats.revenueJukeboxPix.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>
+            <div class="summary-box bg-total"><span class="label">Total Arrecadado</span><span class="value">R$ ${revenueJukeboxTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>
+            <div class="summary-box bg-despesa"><span class="label">Total Despesas</span><span class="value">- R$ ${stats.periodExpensesJukebox.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>
+            <div class="summary-box bg-lucro"><span class="label">Lucro Líquido</span><span class="value">R$ ${(revenueJukeboxTotal - stats.periodExpensesJukebox).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>
+            <div class="summary-box"><span class="label">Depósito (Info)</span><span class="value">R$ ${deposito.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>
         </div>
       </div>
     `;
@@ -630,6 +665,8 @@ const RelatoriosView: React.FC<RelatoriosViewProps> = ({ customers, billings, ex
   }, [stats, printReport, customers, areValuesHidden, showNotification]);
   
     const handlePrintJukeboxReportThermal = useCallback((deposito: number) => {
+    const jukeboxDebts = stats.periodDebtPayments.filter(p => p.equipmentType === 'jukebox');
+    const totalDebts = jukeboxDebts.reduce((s, p) => s + p.amountPaid, 0);
     const revenueJukeboxTotal = stats.revenueJukeboxDinheiro + stats.revenueJukeboxPix;
     const lucroLiquido = revenueJukeboxTotal - stats.periodExpensesJukebox;
 
@@ -643,11 +680,12 @@ const RelatoriosView: React.FC<RelatoriosViewProps> = ({ customers, billings, ex
       .map(b => ({ ...b, revenue: (b.valorPagoDinheiro || 0) + (b.valorPagoPix || 0) }));
 
     const summary = [
-      { label: 'Total Dinheiro', value: `R$ ${stats.revenueJukeboxDinheiro.toFixed(2)}` },
-      { label: 'Total PIX', value: `R$ ${stats.revenueJukeboxPix.toFixed(2)}` },
-      { label: 'Total Arrecadado', value: `R$ ${revenueJukeboxTotal.toFixed(2)}` },
-      { label: '(-) Despesas', value: `- R$ ${stats.periodExpensesJukebox.toFixed(2)}` },
-      { label: '(=) Lucro Líquido', value: `R$ ${lucroLiquido.toFixed(2)}` },
+      { label: 'Cobranças (Relógios)', value: `R$ ${(revenueJukeboxTotal - totalDebts).toFixed(2)}` },
+      { label: 'Dívidas Recebidas', value: `R$ ${totalDebts.toFixed(2)}` },
+      { label: '---', value: '' },
+      { label: 'TOTAL ARRECADADO', value: `R$ ${revenueJukeboxTotal.toFixed(2)}` },
+      { label: 'Despesas', value: `- R$ ${stats.periodExpensesJukebox.toFixed(2)}` },
+      { label: 'LUCRO LÍQUIDO', value: `R$ ${lucroLiquido.toFixed(2)}` },
       { label: 'Depósito (Info)', value: `R$ ${deposito.toFixed(2)}` },
     ];
 
@@ -679,15 +717,22 @@ const RelatoriosView: React.FC<RelatoriosViewProps> = ({ customers, billings, ex
         return date >= start && date <= end;
     }).sort((a, b) => new Date(b.settledAt).getTime() - new Date(a.settledAt).getTime());
 
+    const debtData = debtPayments.filter(p => {
+        if (p.equipmentType !== 'grua') return false;
+        const date = new Date(p.paidAt);
+        return date >= start && date <= end;
+    }).sort((a, b) => new Date(b.paidAt).getTime() - new Date(a.paidAt).getTime());
+
     const customerMap = new Map<string, Customer>(customers.map(c => [c.id, c]));
 
     const totalSaldoBruto = data.reduce((sum, b) => sum + (b.saldo || 0), 0);
     const totalAluguelCliente = data.reduce((sum, b) => sum + (b.aluguelValor || 0), 0);
-    const totalValorFirma = data.reduce((sum, b) => sum + b.valorTotal, 0);
+    const totalDebtPaid = debtData.reduce((sum, p) => sum + p.amountPaid, 0);
+    const totalValorFirma = data.reduce((sum, b) => sum + b.valorTotal, 0) + totalDebtPaid;
 
     const totalReposicao = data.reduce((sum, b) => sum + (b.reposicaoPelucia || 0), 0);
-    const totalEspecie = data.reduce((sum, b) => sum + (b.recebimentoEspecie || 0), 0);
-    const totalPix = data.reduce((sum, b) => sum + (b.recebimentoPix || 0), 0);
+    const totalEspecie = data.reduce((sum, b) => sum + (b.recebimentoEspecie || 0), 0) + debtData.reduce((s, p) => s + (p.amountPaidDinheiro || 0), 0);
+    const totalPix = data.reduce((sum, b) => sum + (b.recebimentoPix || 0), 0) + debtData.reduce((s, p) => s + (p.amountPaidPix || 0), 0);
     
     const saldoFinal = totalValorFirma - reportExpenses;
 
@@ -705,9 +750,10 @@ const RelatoriosView: React.FC<RelatoriosViewProps> = ({ customers, billings, ex
         body { font-family: Arial, sans-serif; font-size: 10pt; color: #333; text-align: center; margin-top: 20px; }
         @page { size: A4 landscape; margin: 10mm; }
         h1 { font-size: 18pt; margin-bottom: 5px; } h2 { font-size: 14pt; margin-bottom: 20px; padding-bottom: 5px; border-bottom: 2px solid #ccc; display: inline-block; }
-        table { width: 95%; border-collapse: collapse; margin: 0 auto 20px auto; font-size: 10pt; }
+        table { width: 95%; border-collapse: collapse; margin: 0 auto 20px auto; font-size: 9pt; }
         th, td { border: 1px solid #ccc; padding: 6px; text-align: center; }
         th { background-color: #f2f2f2; font-weight: bold; }
+        h3 { text-align: left; margin: 20px 0 10px 2.5%; border-left: 4px solid #f59e0b; padding-left: 10px; }
         .currency { text-align: right; font-family: monospace; } .text-left { text-align: left; }
         .no-records { text-align: center; color: #777; font-style: italic; }
         tfoot td { font-weight: bold; border-top: 2px solid #333; }
@@ -716,16 +762,15 @@ const RelatoriosView: React.FC<RelatoriosViewProps> = ({ customers, billings, ex
         .total-saldo-bruto { background-color: #1976D2 !important; }
         .total-aluguel { background-color: #F57C00 !important; }
         .total-firma { background-color: #388E3C !important; }
-        .total-reposicao { background-color: #546E7A !important; }
         .total-especie { background-color: #0288D1 !important; }
         .total-pix { background-color: #689F38 !important; }
       </style>
 
-      <h3>Receitas - Gruas de Pelúcia</h3>
+      <h3>1. Cobranças Realizadas (Gruas)</h3>
       <table>
         <thead>
           <tr>
-            <th class="text-left">Cliente</th> <th class="text-left">Cidade</th> <th>Grua Nº</th> <th class="currency">Rel. Ant.</th> <th class="currency">Rel. Atual</th> <th class="currency">Jogadas</th> <th class="currency">Saldo Bruto</th> <th class="currency">Aluguel (Cliente)</th> <th class="currency">Valor (Firma)</th> <th class="currency">Rep. Pelúcia</th> <th class="currency">Receb. Espécie</th> <th class="currency">Receb. PIX</th>
+            <th class="text-left">Cliente</th> <th class="text-left">Cidade</th> <th>Grua Nº</th> <th class="currency">Rel. Ant.</th> <th class="currency">Rel. Atual</th> <th class="currency">Saldo Bruto</th> <th class="currency">Aluguel (Cliente)</th> <th class="currency">Valor (Firma)</th> <th class="currency">Receb. Espécie</th> <th class="currency">Receb. PIX</th>
           </tr>
         </thead>
         <tbody>
@@ -734,23 +779,35 @@ const RelatoriosView: React.FC<RelatoriosViewProps> = ({ customers, billings, ex
             const cidade = customer ? customer.cidade : 'N/A';
             return `
             <tr>
-              <td class="text-left">${b.customerName}</td> <td class="text-left">${cidade}</td> <td>${b.equipmentNumero}</td> <td class="currency">${b.relogioAnterior}</td> <td class="currency">${b.relogioAtual}</td> <td class="currency">${b.partidasJogadas}</td> <td class="currency">R$ ${(b.saldo || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td> <td class="currency">R$ ${(b.aluguelValor || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td> <td class="currency">R$ ${b.valorTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td> <td class="currency">${b.reposicaoPelucia || 0}</td> <td class="currency">R$ ${(b.recebimentoEspecie || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td> <td class="currency">R$ ${(b.recebimentoPix || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+              <td class="text-left">${b.customerName}</td> <td class="text-left">${cidade}</td> <td>${b.equipmentNumero}</td> <td class="currency">${b.relogioAnterior}</td> <td class="currency">${b.relogioAtual}</td> <td class="currency">R$ ${(b.saldo || 0).toFixed(2)}</td> <td class="currency">R$ ${(b.aluguelValor || 0).toFixed(2)}</td> <td class="currency">R$ ${b.valorTotal.toFixed(2)}</td> <td class="currency">R$ ${(b.recebimentoEspecie || 0).toFixed(2)}</td> <td class="currency">R$ ${(b.recebimentoPix || 0).toFixed(2)}</td>
             </tr>
             `;
-          }).join('') : '<tr><td colspan="12" class="no-records">Nenhuma cobrança no período.</td></tr>'}
+          }).join('') : '<tr><td colspan="10" class="no-records">Nenhuma cobrança no período.</td></tr>'}
+        </tbody>
+      </table>
+
+      ${debtData.length > 0 ? `
+      <h3>2. Dívidas Recebidas (Gruas)</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>Data</th> <th class="text-left">Cliente</th> <th class="text-left">Cidade</th> <th>Forma de Pagto.</th> <th class="currency">Valor Recebido</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${debtData.map(p => {
+             const customer = customerMap.get(p.customerId);
+             return `<tr><td>${new Date(p.paidAt).toLocaleDateString('pt-BR')}</td><td class="text-left">${p.customerName}</td><td class="text-left">${customer?.cidade || 'N/A'}</td><td class="text-left uppercase">${p.paymentMethod}</td><td class="currency" style="color: #f59e0b;">R$ ${p.amountPaid.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td></tr>`;
+          }).join('')}
         </tbody>
         <tfoot>
-            <tr>
-              <td colspan="6" class="total-cell-label">TOTAIS</td>
-              <td class="currency total-cell total-saldo-bruto">R$ ${totalSaldoBruto.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-              <td class="currency total-cell total-aluguel">R$ ${totalAluguelCliente.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-              <td class="currency total-cell total-firma">R$ ${totalValorFirma.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-              <td class="currency total-cell total-reposicao">${totalReposicao}</td>
-              <td class="currency total-cell total-especie">R$ ${totalEspecie.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-              <td class="currency total-cell total-pix">R$ ${totalPix.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-            </tr>
+          <tr>
+            <td colspan="4" class="text-right font-bold uppercase transition-all">Total Dívida Recebida (Gruas)</td>
+            <td class="currency" style="background-color: #fffbeb;">R$ ${totalDebtPaid.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+          </tr>
         </tfoot>
       </table>
+      ` : ''}
 
       <div class="fin-grid">
         <div class="fin-box bg-sky"><span class="fin-label">Total Arrecadado (Dinheiro)</span><span class="fin-value">R$ ${totalEspecie.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>
@@ -761,15 +818,18 @@ const RelatoriosView: React.FC<RelatoriosViewProps> = ({ customers, billings, ex
       </div>
     `;
 
-    const dateTitle = `${new Date(startDate + 'T00:00:00').toLocaleDateString('pt-BR')} a ${new Date(endDate + 'T00:00:00').toLocaleDateString('pt-BR')}`;
+    const dateTitle = `${new Date(startDate + 'T00:00:00').toLocaleDateString('pt-BR')} a ${new Date(endDate + 'T23:59:59').toLocaleDateString('pt-BR')}`;
     printReport('Relatório de Gruas de Pelúcia', content, dateTitle);
     setIsCraneReportModalOpen(false);
-  }, [expenses, billings, printReport, customers, areValuesHidden, showNotification]);
+  }, [expenses, billings, debtPayments, printReport, customers, areValuesHidden, showNotification]);
   
-    const handleGenerateCraneReportThermal = useCallback((startDate: string, endDate: string, moneyDeposit: number) => {
+  const handleGenerateCraneReportThermal = useCallback((startDate: string, endDate: string, moneyDeposit: number) => {
     const start = new Date(startDate + 'T00:00:00');
     const end = new Date(endDate + 'T23:59:59');
     
+    const gruaDebts = debtPayments.filter(p => p.equipmentType === 'grua' && new Date(p.paidAt) >= start && new Date(p.paidAt) <= end);
+    const totalDebts = gruaDebts.reduce((s, p) => s + p.amountPaid, 0);
+
     const reportExpenses = expenses
       .filter(e => e.category === 'grua' && new Date(e.date) >= start && new Date(e.date) <= end)
       .reduce((sum, e) => sum + e.amount, 0);
@@ -778,10 +838,8 @@ const RelatoriosView: React.FC<RelatoriosViewProps> = ({ customers, billings, ex
       .filter(b => b.equipmentType === 'grua' && new Date(b.settledAt) >= start && new Date(b.settledAt) <= end)
       .sort((a, b) => new Date(b.settledAt).getTime() - new Date(a.settledAt).getTime());
 
-    const totalValorFirma = data.reduce((sum, b) => sum + b.valorTotal, 0);
-    const totalEspecie = data.reduce((sum, b) => sum + (b.recebimentoEspecie || 0), 0);
-    const totalPix = data.reduce((sum, b) => sum + (b.recebimentoPix || 0), 0);
-    const saldoFinal = totalValorFirma - reportExpenses;
+    const totalValorFirma = data.reduce((sum, b) => sum + b.valorTotal, 0) + totalDebts;
+    const lucroFinal = totalValorFirma - reportExpenses;
 
     const columns: ReportColumn[] = [
       { header: 'Cliente', accessor: 'customerName', className: 'text-left w-2/5' },
@@ -790,106 +848,21 @@ const RelatoriosView: React.FC<RelatoriosViewProps> = ({ customers, billings, ex
     ];
 
     const summary = [
-      { label: 'Total Arrecadado', value: `R$ ${totalValorFirma.toFixed(2)}` },
+      { label: 'Cobranças (Firma)', value: `R$ ${(totalValorFirma - totalDebts).toFixed(2)}` },
+      { label: 'Dívidas Recebidas', value: `R$ ${totalDebts.toFixed(2)}` },
+      { label: '---', value: '' },
+      { label: 'TOTAL ARRECADADO', value: `R$ ${totalValorFirma.toFixed(2)}` },
       { label: '(-) Despesas', value: `- R$ ${reportExpenses.toFixed(2)}` },
-      { label: '(=) Saldo Final', value: `R$ ${saldoFinal.toFixed(2)}` },
+      { label: 'LUCRO LÍQUIDO', value: `R$ ${lucroFinal.toFixed(2)}` },
       { label: 'Depósito (Info)', value: `R$ ${moneyDeposit.toFixed(2)}` },
     ];
 
     printThermalReport('Relatório de Gruas de Pelúcia', columns, data, summary);
     setIsCraneReportModalOpen(false);
-  }, [expenses, billings, printThermalReport]);
+  }, [expenses, billings, debtPayments, printThermalReport]);
 
 
-  const handlePrintDebtPaymentsReport = useCallback(() => {
-    if (areValuesHidden) {
-        showNotification("Desative o Modo de Privacidade para imprimir relatórios.", "error");
-        return;
-    }
-    const data = [...stats.periodDebtPayments].sort((a, b) => new Date(b.paidAt).getTime() - new Date(a.paidAt).getTime());
-    const totalDinheiro = stats.debtReceivedDinheiro;
-    const totalPix = stats.debtReceivedPix;
-    const totalGeral = stats.totalDebtReceived;
 
-    const content = `
-      <style>
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; font-size: 10pt; color: #333; }
-        @page { size: A4 portrait; margin: 15mm; }
-        h3 { text-align: left; font-size: 14pt; color: #333; margin-bottom: 10px; }
-        table { width: 100%; border-collapse: collapse; margin: 0 auto 20px auto; font-size: 10pt; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
-        th, td { border: 1px solid #e2e8f0; padding: 8px 10px; text-align: center; }
-        th { background-color: #dcfce7; color: #166534; font-weight: bold; text-transform: uppercase; }
-        tr:nth-child(even) { background-color: #f8fafc; }
-        .currency { text-align: right; font-family: 'Courier New', monospace; }
-        .text-left { text-align: left; }
-        .no-records { padding: 20px; text-align: center; color: #777; font-style: italic; }
-        
-        .summary-section { margin-top: 30px; text-align: left; page-break-inside: avoid; }
-        .summary-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-        .summary-card { padding: 12px; border-radius: 8px; border: 1px solid #ddd; background-color: #f9f9f9 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-        .summary-card .label { display: block; font-size: 9pt; color: #555; margin-bottom: 4px; font-weight: bold; text-transform: uppercase; }
-        .summary-card .value { display: block; font-size: 15pt; font-weight: bold; font-family: 'Courier New', monospace; }
-        .grid-col-span-2 { grid-column: span 2; }
-        
-        .summary-card--dinheiro { background-color: #e0f2fe !important; border-color: #7dd3fc !important; }
-        .summary-card--dinheiro .value { color: #0369a1 !important; }
-        .summary-card--pix { background-color: #f7fee7 !important; border-color: #bef264 !important; }
-        .summary-card--pix .value { color: #4d7c0f !important; }
-        .summary-card--emerald { background-color: #dcfce7 !important; border-color: #4ade80 !important; grid-column: span 2; }
-        .summary-card--emerald .value { color: #15803d !important; font-size: 18pt; }
-      </style>
-      <h3>Recebimentos de Dívidas</h3>
-      <table>
-        <thead>
-          <tr>
-            <th>Data</th>
-            <th class="text-left">Cliente</th>
-            <th class="currency">Recebido (Dinheiro)</th>
-            <th class="currency">Recebido (PIX)</th>
-            <th class="currency">Total Pago</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${data.length > 0 ? data.map(p => `
-            <tr>
-              <td>${new Date(p.paidAt).toLocaleDateString('pt-BR')}</td>
-              <td class="text-left">${p.customerName}</td>
-              <td class="currency">R$ ${(p.amountPaidDinheiro || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-              <td class="currency">R$ ${(p.amountPaidPix || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-              <td class="currency" style="font-weight: bold;">R$ ${p.amountPaid.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-            </tr>
-          `).join('') : '<tr><td colspan="5" class="no-records">Nenhum pagamento de dívida no período.</td></tr>'}
-        </tbody>
-      </table>
-
-      <div class="summary-section">
-        <h3>Fechamento Financeiro</h3>
-        <div class="summary-grid">
-            <div class="summary-card summary-card--dinheiro"><span class="label">Total Dinheiro</span><span class="value">R$ ${totalDinheiro.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>
-            <div class="summary-card summary-card--pix"><span class="label">Total PIX</span><span class="value">R$ ${totalPix.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>
-            <div class="summary-card summary-card--emerald grid-col-span-2"><span class="label">(=) TOTAL GERAL RECEBIDO</span><span class="value">R$ ${totalGeral.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>
-        </div>
-      </div>
-    `;
-    printReport('Relatório de Dívidas Recebidas', content);
-  }, [stats.periodDebtPayments, stats.debtReceivedDinheiro, stats.debtReceivedPix, stats.totalDebtReceived, printReport, areValuesHidden, showNotification]);
-  
-    const handlePrintDebtPaymentsReportThermal = useCallback(() => {
-    const columns: ReportColumn[] = [
-      { header: 'Cliente', accessor: 'customerName', className: 'text-left w-3/5' },
-      { header: 'Total', accessor: 'amountPaid', className: 'text-right', render: (val) => `R$${val.toFixed(2)}` },
-    ];
-
-    const data = [...stats.periodDebtPayments].sort((a, b) => new Date(b.paidAt).getTime() - new Date(a.paidAt).getTime());
-    
-    const summary = [
-      { label: 'Total Dinheiro', value: `R$ ${stats.debtReceivedDinheiro.toFixed(2)}` },
-      { label: 'Total PIX', value: `R$ ${stats.debtReceivedPix.toFixed(2)}` },
-      { label: 'Total Geral', value: `R$ ${stats.totalDebtReceived.toFixed(2)}` },
-    ];
-
-    printThermalReport('Relatório de Dívidas Recebidas', columns, data, summary);
-  }, [stats, printThermalReport]);
 
 
   const handleGenerateSlips = useCallback((selectedCustomers: Customer[]) => {
@@ -1006,6 +979,46 @@ const RelatoriosView: React.FC<RelatoriosViewProps> = ({ customers, billings, ex
           <input type="date" name="end" value={dateRange.end} onChange={handleDateChange} className="w-full sm:w-auto bg-slate-100 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded-md py-2 px-3 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-lime-500" />
       </div>
 
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+          <div className="bg-gradient-to-br from-indigo-600 to-blue-700 p-6 rounded-lg shadow-xl text-white">
+              <h3 className="text-sm font-medium opacity-80 uppercase tracking-wider mb-2">Total em Dinheiro</h3>
+              <p className="text-3xl font-bold">
+                  {areValuesHidden ? 'R$ •••,••' : `R$ ${(stats.revenueMesaDinheiro + stats.revenueJukeboxDinheiro + stats.revenueGruaEspecie).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+              </p>
+              <div className="mt-2 text-xs opacity-70 flex justify-between">
+                  <span>Equipamentos + Dívidas</span>
+                  <span>Período Selecionado</span>
+              </div>
+          </div>
+          <div className="bg-gradient-to-br from-emerald-600 to-teal-700 p-6 rounded-lg shadow-xl text-white">
+              <h3 className="text-sm font-medium opacity-80 uppercase tracking-wider mb-2">Total em PIX</h3>
+              <p className="text-3xl font-bold">
+                  {areValuesHidden ? 'R$ •••,••' : `R$ ${(stats.revenueMesaPix + stats.revenueJukeboxPix + stats.revenueGruaPix).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+              </p>
+              <div className="mt-2 text-xs opacity-70">
+                  Total arrecadado via PIX
+              </div>
+          </div>
+          <div className="bg-gradient-to-br from-rose-600 to-red-700 p-6 rounded-lg shadow-xl text-white">
+              <h3 className="text-sm font-medium opacity-80 uppercase tracking-wider mb-2">Total de Despesas</h3>
+              <p className="text-3xl font-bold">
+                  {areValuesHidden ? 'R$ •••,••' : `R$ ${(stats.periodExpensesMesa + stats.periodExpensesJukebox + stats.periodExpensesGrua + (expenseCategory === 'outra' ? stats.totalFilteredExpenses : 0)).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+              </p>
+              <div className="mt-2 text-xs opacity-70">
+                  Total gasto no período
+              </div>
+          </div>
+          <div className="bg-gradient-to-br from-amber-500 to-orange-600 p-6 rounded-lg shadow-xl text-white">
+              <h3 className="text-sm font-medium opacity-80 uppercase tracking-wider mb-2">Lucro Consolidado</h3>
+              <p className="text-3xl font-bold">
+                  {areValuesHidden ? 'R$ •••,••' : `R$ ${(stats.revenueMesaDinheiro + stats.revenueMesaPix + stats.revenueJukeboxDinheiro + stats.revenueJukeboxPix + stats.revenueGruaFirma - (stats.periodExpensesMesa + stats.periodExpensesJukebox + stats.periodExpensesGrua)).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+              </p>
+              <div className="mt-2 text-xs opacity-70">
+                  Resultado final do período
+              </div>
+          </div>
+      </div>
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
         <InfoCard title="Resumo: Mesas de Sinuca" icon={<BilliardIcon className="w-6 h-6 text-cyan-500" />}>
             <dl className="space-y-3">
@@ -1045,18 +1058,6 @@ const RelatoriosView: React.FC<RelatoriosViewProps> = ({ customers, billings, ex
         </InfoCard>
         
         <div className="lg:col-span-3 grid grid-cols-1 md:grid-cols-2 gap-8">
-            <InfoCard title="Resumo: Dívidas Recebidas" icon={<CreditCardIcon className="w-6 h-6 text-emerald-500" />}>
-                <dl className="space-y-3">
-                    <InfoRow label="Recebido (Dinheiro)" value={areValuesHidden ? 'R$ •••,••' : `R$ ${stats.debtReceivedDinheiro.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`} valueColor="text-sky-600 dark:text-sky-400" />
-                    <InfoRow label="Recebido (PIX)" value={areValuesHidden ? 'R$ •••,••' : `R$ ${stats.debtReceivedPix.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`} valueColor="text-lime-600 dark:text-lime-400" />
-                    <InfoRow label="(=) Total Recebido" value={areValuesHidden ? 'R$ •••,••' : `R$ ${stats.totalDebtReceived.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`} valueColor="text-emerald-500 dark:text-emerald-300 font-bold text-lg" />
-                </dl>
-                <div className="mt-4 flex gap-2">
-                    <button onClick={handlePrintDebtPaymentsReport} disabled={areValuesHidden} title={areValuesHidden ? "Desative o Modo de Privacidade para imprimir" : "Imprimir Relatório de Dívidas (A4)"} className="flex-1 inline-flex items-center justify-center gap-2 bg-emerald-600 text-white font-bold py-2 px-4 rounded-md hover:bg-emerald-500 disabled:bg-slate-500 disabled:cursor-not-allowed"><PrinterIcon className="w-5 h-5"/> <span>A4</span></button>
-                    <button onClick={handlePrintDebtPaymentsReportThermal} disabled={areValuesHidden} title={areValuesHidden ? "Desative o Modo de Privacidade para imprimir" : "Imprimir Relatório de Dívidas (Térmico)"} className="flex-1 inline-flex items-center justify-center gap-2 bg-teal-600 text-white font-bold py-2 px-4 rounded-md hover:bg-teal-500 disabled:bg-slate-500 disabled:cursor-not-allowed"><DocumentDuplicateIcon className="w-5 h-5"/> <span>Térmico</span></button>
-                </div>
-            </InfoCard>
-
             <InfoCard title="Resumo Geral de Despesas" icon={<CalculatorIcon className="w-6 h-6 text-red-500" />}>
                 <div className="space-y-4">
                     <div className="flex flex-col sm:flex-row sm:items-center sm:gap-4">

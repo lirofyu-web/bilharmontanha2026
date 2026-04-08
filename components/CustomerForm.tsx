@@ -38,6 +38,7 @@ const initialFormState = {
     equipment: [],
     latitude: null,
     longitude: null,
+    mercadoPagoStoreId: '',
 };
 
 const FormField: React.FC<{ 
@@ -50,7 +51,8 @@ const FormField: React.FC<{
   step?: string;
   isEditMode?: boolean;
   inputMode?: 'none' | 'text' | 'tel' | 'url' | 'email' | 'numeric' | 'decimal' | 'search';
-}> = React.memo(({ label, name, value, onChange, type = 'text', required = false, step, isEditMode, inputMode }) => (
+  placeholder?: string;
+}> = React.memo(({ label, name, value, onChange, type = 'text', required = false, step, isEditMode, inputMode, placeholder }) => (
     <div>
         <label htmlFor={`${isEditMode ? 'edit-' : ''}${name}`} className={`block text-sm font-medium ${isEditMode ? 'text-slate-300' : 'text-slate-600 dark:text-slate-300'} mb-1`}>{label}</label>
         <input 
@@ -62,6 +64,7 @@ const FormField: React.FC<{
             required={required} 
             step={step} 
             inputMode={inputMode}
+            placeholder={placeholder}
             className={`w-full border rounded-md py-2 px-3 focus:outline-none focus:ring-2 focus:ring-lime-500 ${isEditMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-slate-100 dark:bg-slate-700 border-slate-300 dark:border-slate-600 text-slate-900 dark:text-white'}`} 
         />
     </div>
@@ -80,6 +83,7 @@ const CustomerForm: React.FC<CustomerFormProps> = ({ customers, initialData, onS
   
   const [openEquipmentIndex, setOpenEquipmentIndex] = useState<number | null>(null);
   const [isLocating, setIsLocating] = useState(false);
+  const [locationStatus, setLocationStatus] = useState<'idle' | 'online' | 'offline' | 'error'>('idle');
   const [signatureModalFor, setSignatureModalFor] = useState<'cliente' | 'firma' | null>(null);
 
   const handleBaseChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
@@ -154,6 +158,7 @@ const CustomerForm: React.FC<CustomerFormProps> = ({ customers, initialData, onS
 
   const handleGeolocate = useCallback(async () => {
     setIsLocating(true);
+    setLocationStatus('idle');
     try {
         const position = await Geolocation.getCurrentPosition({
             enableHighAccuracy: true,
@@ -164,13 +169,19 @@ const CustomerForm: React.FC<CustomerFormProps> = ({ customers, initialData, onS
         
         if (!navigator.onLine) {
             setFormData(prev => ({ ...prev, latitude, longitude }));
-            showNotification("Coordenadas capturadas via GPS! (Modo Offline - Endereço não preenchido)", "success");
+            setLocationStatus('offline');
+            showNotification("Coordenadas capturadas Offline (GPS Ativo)", "success");
             setIsLocating(false);
             return;
         }
 
         const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${latitude}&lon=${longitude}`);
-        if (!response.ok) throw new Error('Falha ao buscar endereço.');
+        if (!response.ok) {
+            setFormData(prev => ({ ...prev, latitude, longitude }));
+            setLocationStatus('offline');
+            showNotification("Coordenadas capturadas via GPS! (Erro ao buscar endereço online)", "success");
+            return;
+        }
         const data = await response.json();
         
         if (data?.address) {
@@ -179,13 +190,16 @@ const CustomerForm: React.FC<CustomerFormProps> = ({ customers, initialData, onS
             const cityName = city || town || village || suburb || '';
             const fullCity = `${cityName}, ${state || ''}`.replace(/^, |^ | ,$/g, '');
             setFormData(prev => ({ ...prev, endereco: street, cidade: fullCity, latitude, longitude }));
+            setLocationStatus('online');
             showNotification("Endereço e coordenadas capturados com sucesso!", "success");
         } else {
             setFormData(prev => ({ ...prev, latitude, longitude }));
+            setLocationStatus('offline');
             showNotification("Coordenadas salvas, mas o endereço não foi encontrado.", "success");
         }
     } catch (error: any) {
         console.error("Localização erro:", error);
+        setLocationStatus('error');
         let message = "Erro ao obter localização.";
         if (error.code === 1 || error.message?.toLowerCase().includes("denied")) {
             message = "Permissão de localização negada pelo sistema.";
@@ -255,13 +269,24 @@ const CustomerForm: React.FC<CustomerFormProps> = ({ customers, initialData, onS
                 <label htmlFor={`${isEditMode ? 'edit-' : ''}endereco`} className={`block text-sm font-medium ${isEditMode ? 'text-slate-300' : 'text-slate-600 dark:text-slate-300'} mb-1`}>Endereço</label>
                 <div className="relative flex items-center">
                     <input type="text" id={`${isEditMode ? 'edit-' : ''}endereco`} name="endereco" value={formData.endereco || ''} onChange={handleBaseChange} className={`w-full border rounded-md py-2 pl-3 pr-10 focus:outline-none focus:ring-2 focus:ring-lime-500 ${isEditMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-slate-100 dark:bg-slate-700 border-slate-300 dark:border-slate-600 text-slate-900 dark:text-white'}`} />
-                    <button type="button" onClick={handleGeolocate} disabled={isLocating} className="absolute right-0 top-0 h-full px-3 text-slate-400 hover:text-lime-400 disabled:text-slate-600 disabled:cursor-wait flex items-center" title="Preencher endereço com localização atual">
-                        {isLocating ? <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> : <LocationMarkerIcon className="w-5 h-5" />}
+                    <button 
+                        type="button" 
+                        onClick={handleGeolocate} 
+                        disabled={isLocating} 
+                        className={`absolute right-0 top-0 h-full px-3 transition-all duration-500 rounded-r-md flex items-center
+                            ${isLocating ? 'text-slate-600 cursor-wait' : 
+                              locationStatus === 'online' ? 'bg-emerald-500 text-white' : 
+                              locationStatus === 'offline' ? 'bg-red-500 text-white' : 
+                              locationStatus === 'error' ? 'text-red-400' : 'text-slate-400 hover:text-lime-400'}`}
+                        title="Preencher endereço com localização atual"
+                    >
+                        {isLocating ? <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> : <LocationMarkerIcon className="w-5 h-5" />}
                     </button>
                 </div>
             </div>
             <FormField label="Cidade" name="cidade" value={formData.cidade || ''} onChange={handleBaseChange} required isEditMode={isEditMode} />
             <FormField label="Cobrador" name="linhaNumero" value={formData.linhaNumero || ''} onChange={handleBaseChange} isEditMode={isEditMode}/>
+            <FormField label="ID Loja Mercado Pago" name="mercadoPagoStoreId" value={formData.mercadoPagoStoreId || ''} onChange={handleBaseChange} placeholder="Ex: 12345678" isEditMode={isEditMode}/>
             {isEditMode && !areValuesHidden && (
                 <FormField label="Dívida Atual (R$)" name="debtAmount" value={String(formData.debtAmount || '')} onChange={handleBaseChange} type="text" inputMode="decimal" isEditMode={isEditMode}/>
             )}
@@ -296,6 +321,7 @@ const CustomerForm: React.FC<CustomerFormProps> = ({ customers, initialData, onS
                                                 <label className={`block text-sm font-medium ${isEditMode ? 'text-slate-300' : 'text-slate-600 dark:text-slate-300'} mb-1`}>Tipo de Cobrança</label>
                                                 <select name="billingType" value={equip.billingType || 'perPlay'} onChange={e => handleEquipmentChange(index, e)} className={`w-full border rounded-md py-2 px-3 focus:outline-none focus:ring-2 focus:ring-lime-500 ${isEditMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-slate-100 dark:bg-slate-700 border-slate-300 dark:border-slate-600 text-slate-900 dark:text-white'}`}><option value="perPlay">Por Ficha</option><option value="monthly">Mensal Fixo</option></select>
                                             </div>
+                                            <FormField label="ID Heroku (ESP32)" name="herokuId" value={String(equip.herokuId || '')} onChange={e => handleEquipmentChange(index, e)} placeholder="Ex: heroku-app-name" isEditMode={isEditMode} />
                                             <div/>
                                             <FormField label="Número da Mesa" name="numero" value={String(equip.numero || '')} onChange={e => handleEquipmentChange(index, e)} isEditMode={isEditMode} />
                                             <FormField label="Nº Relógio da Mesa" name="relogioNumero" value={String(equip.relogioNumero || '')} onChange={e => handleEquipmentChange(index, e)} isEditMode={isEditMode} />
@@ -323,6 +349,7 @@ const CustomerForm: React.FC<CustomerFormProps> = ({ customers, initialData, onS
                                             <FormField label="Leitura Anterior" name="relogioAnterior" type="number" inputMode="numeric" value={String(equip.relogioAnterior || '0')} onChange={e => handleEquipmentChange(index, e)} isEditMode={isEditMode} />
                                             <FormField label="% da Firma" name="porcentagemJukeboxFirma" type="number" inputMode="numeric" value={String(equip.porcentagemJukeboxFirma || '50')} onChange={e => handleEquipmentChange(index, e)} isEditMode={isEditMode} />
                                             <FormField label="% do Cliente" name="porcentagemJukeboxCliente" type="number" inputMode="numeric" value={String(equip.porcentagemJukeboxCliente || '50')} onChange={e => handleEquipmentChange(index, e)} isEditMode={isEditMode} />
+                                            <FormField label="ID Heroku (ESP32)" name="herokuId" value={String(equip.herokuId || '')} onChange={e => handleEquipmentChange(index, e)} placeholder="Ex: heroku-app-name" isEditMode={isEditMode} />
                                         </div>
                                     ) : (
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -334,6 +361,7 @@ const CustomerForm: React.FC<CustomerFormProps> = ({ customers, initialData, onS
                                                 <select name="aluguelTipo" value={equip.aluguelPercentual != null ? 'percentual' : 'fixo'} onChange={e => handleEquipmentChange(index, e)} className={`w-full border rounded-md py-2 px-3 focus:outline-none focus:ring-2 focus:ring-lime-500 ${isEditMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-slate-100 dark:bg-slate-700 border-slate-300 dark:border-slate-600 text-slate-900 dark:text-white'}`}><option value="fixo">Valor Fixo (R$)</option><option value="percentual">Percentual (%)</option></select>
                                             </div>
                                             {equip.aluguelPercentual != null ? <FormField label="Aluguel (%)" name="aluguelPercentual" type="number" inputMode="numeric" value={String(equip.aluguelPercentual ?? '')} onChange={e => handleEquipmentChange(index, e)} isEditMode={isEditMode} /> : <FormField label="Aluguel Fixo (R$)" name="aluguelValor" type="text" inputMode="numeric" value={String(equip.aluguelValor || '')} onChange={e => handleEquipmentChange(index, e)} isEditMode={isEditMode} />}
+                                            <FormField label="ID Heroku (ESP32)" name="herokuId" value={String(equip.herokuId || '')} onChange={e => handleEquipmentChange(index, e)} placeholder="Ex: heroku-app-name" isEditMode={isEditMode} />
                                         </div>
                                     )}
                                 </div>

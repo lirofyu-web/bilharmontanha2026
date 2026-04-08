@@ -25,7 +25,7 @@ const DebtReceiptSheet: React.FC<DebtReceiptSheetProps> = ({ debtPayment, qrCode
         <div style={{ fontFamily: '\'Courier New\', Courier, monospace' }} className="text-base">
             <div className="header text-center mb-4">
                 <h3 className="font-black text-xl">MONTANHA BILHAR & JUKEBOX</h3>
-                <p className="font-bold text-base">RECIBO DE PAGAMENTO DE DÍVIDA</p>
+                <p className="font-bold text-base uppercase">RECIBO DE DÍVIDA - {debtPayment.equipmentType}</p>
                 <p>--------------------------------</p>
             </div>
             

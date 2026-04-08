@@ -9,14 +9,16 @@ interface FinalizePaymentModalProps {
   onClose: () => void;
   onConfirm: (updatedBilling: Billing) => void;
   billing: Billing;
+  customerDebt: number;
 }
 
-const FinalizePaymentModal: React.FC<FinalizePaymentModalProps> = ({ isOpen, onClose, onConfirm, billing }) => {
+const FinalizePaymentModal: React.FC<FinalizePaymentModalProps> = ({ isOpen, onClose, onConfirm, billing, customerDebt }) => {
   const [paymentValues, setPaymentValues] = useState({
     dinheiro: '',
     pix: '',
     bonus: '',
-    negativo: ''
+    negativo: '',
+    dividaPaga: '0'
   });
   const [relogioAtual, setRelogioAtual] = useState('');
   const [error, setError] = useState('');
@@ -31,7 +33,8 @@ const FinalizePaymentModal: React.FC<FinalizePaymentModalProps> = ({ isOpen, onC
         dinheiro: String(valorFinal > 0 ? valorFinal : '0'),
         pix: '0',
         bonus: String(initialBonus > 0 ? initialBonus : ''),
-        negativo: '0'
+        negativo: '0',
+        dividaPaga: '0'
       });
       if (billing.equipmentType === 'jukebox' && billing.relogioAtual > billing.relogioAnterior) {
           setRelogioAtual(String(billing.relogioAtual));
@@ -43,7 +46,17 @@ const FinalizePaymentModal: React.FC<FinalizePaymentModalProps> = ({ isOpen, onC
   }, [isOpen, billing]);
 
   const handlePaymentChange = useCallback((field: keyof typeof paymentValues, value: string) => {
-    setPaymentValues(prev => ({ ...prev, [field]: value }));
+    setPaymentValues(prev => {
+        const newState = { ...prev, [field]: value };
+        if (field === 'dividaPaga') {
+            const oldVal = parseFloat(prev.dividaPaga || '0') || 0;
+            const newVal = parseFloat(value || '0') || 0;
+            const delta = newVal - oldVal;
+            const currentDinheiro = parseFloat(prev.dinheiro || '0') || 0;
+            newState.dinheiro = String(Math.max(0, parseFloat((currentDinheiro + delta).toFixed(2))));
+        }
+        return newState;
+    });
   }, []);
   
   useEffect(() => {
@@ -53,13 +66,15 @@ const FinalizePaymentModal: React.FC<FinalizePaymentModalProps> = ({ isOpen, onC
     const vDinheiro = safeParseFloat(paymentValues.dinheiro);
     const vPix = safeParseFloat(paymentValues.pix);
     const vNegativo = safeParseFloat(paymentValues.negativo);
+    const vDividaPaga = safeParseFloat(paymentValues.dividaPaga);
 
     const totalDeclarado = vDinheiro + vPix + vNegativo;
-    const difference = totalDeclarado - totalDevido;
+    const totalExigido = totalDevido + vDividaPaga;
+    const difference = totalDeclarado - totalExigido;
 
     let newError = '';
     if (Math.abs(difference) > 0.01) { // Tolera 1 centavo
-        newError = `A soma dos pagamentos (R$ ${totalDeclarado.toFixed(2)}) não corresponde ao total devido (R$ ${totalDevido.toFixed(2)}).`;
+        newError = `Soma (R$ ${totalDeclarado.toFixed(2)}) não bate com Total + Dívida (R$ ${totalExigido.toFixed(2)}).`;
     } else if (billing.equipmentType === 'jukebox') {
         const ra = safeParseFloat(relogioAtual);
         if (!relogioAtual) {
@@ -101,6 +116,7 @@ const FinalizePaymentModal: React.FC<FinalizePaymentModalProps> = ({ isOpen, onC
         valorPagoPix: valorPagoPix > 0 ? valorPagoPix : undefined,
         valorDebitoNegativo: valorDebitoNegativo > 0 ? valorDebitoNegativo : undefined,
         valorBonus: valorBonus > 0 ? valorBonus : undefined,
+        valorDividaPaga: safeParseFloat(paymentValues.dividaPaga) > 0 ? safeParseFloat(paymentValues.dividaPaga) : undefined,
     };
 
     if (billing.equipmentType === 'jukebox') {
@@ -156,6 +172,13 @@ const FinalizePaymentModal: React.FC<FinalizePaymentModalProps> = ({ isOpen, onC
                 <div>
                   <label className="block text-sm font-medium text-slate-300 mb-1">Valor em PIX (R$)</label>
                   <input type="text" inputMode="decimal" value={paymentValues.pix} onChange={(e) => handlePaymentChange('pix', e.target.value)} className="w-full bg-slate-700 border border-slate-600 rounded-md py-2 px-3 text-white focus:outline-none focus:ring-2 focus:ring-lime-500" />
+                </div>
+                <div className="md:col-span-2 bg-slate-900/40 p-3 rounded-md border border-slate-700/50">
+                  <div className="flex justify-between items-center mb-1">
+                    <label className="block text-sm font-medium text-slate-300">Pagamento de Dívida (R$)</label>
+                    <span className="text-xs text-slate-400">Dívida: <span className="text-red-400 font-bold font-mono">R$ {customerDebt.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span></span>
+                  </div>
+                  <input type="text" inputMode="decimal" value={paymentValues.dividaPaga} onChange={(e) => handlePaymentChange('dividaPaga', e.target.value)} className="w-full bg-slate-700 border border-slate-600 rounded-md py-2 px-3 text-white focus:outline-none focus:ring-2 focus:ring-lime-500" />
                 </div>
             </div>
             {error && <p className="text-red-400 text-xs mt-1 text-center">{error}</p>}

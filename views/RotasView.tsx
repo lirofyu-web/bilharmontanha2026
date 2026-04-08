@@ -2,7 +2,7 @@
 // views/RotasView.tsx
 import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import ReactDOMServer from 'react-dom/server';
-import { Customer } from '../types';
+import { Customer, Warning } from '../types';
 import PageHeader from '../components/PageHeader';
 import MapComponent from '../components/MapComponent';
 import ThermalRouteSheet from '../components/ThermalRouteSheet'; // Import the new component
@@ -14,6 +14,7 @@ import { nativePrintPDF } from '../utils/nativePrint';
 
 interface RotasViewProps {
   customers: Customer[];
+  warnings: Warning[];
 }
 
 type EquipmentFilter = 'all' | 'mesa' | 'jukebox' | 'grua';
@@ -45,7 +46,7 @@ const FilterCard: React.FC<{
     );
 };
 
-const RotasView: React.FC<RotasViewProps> = ({ customers }) => {
+const RotasView: React.FC<RotasViewProps> = ({ customers, warnings }) => {
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
   const [distances, setDistances] = useState<Record<string, number | null>>({});
   const [isProcessingRoute, setIsProcessingRoute] = useState(false);
@@ -191,6 +192,8 @@ const RotasView: React.FC<RotasViewProps> = ({ customers }) => {
                 tableRows += `<tr><td colspan="6" class="city-header">${item.name}</td></tr>`;
             } else {
                 const customer = item.data;
+                const activeWarnings = warnings.filter(w => w.customerId === customer.id && !w.isResolved);
+                
                 const equipamentos = [];
                 if ((customer.equipment || []).some(e => e.type === 'mesa')) equipamentos.push('Mesa');
                 if ((customer.equipment || []).some(e => e.type === 'jukebox')) equipamentos.push('Jukebox');
@@ -200,15 +203,22 @@ const RotasView: React.FC<RotasViewProps> = ({ customers }) => {
                 const clockReadings = (customer.equipment || [])
                     .filter(e => e.type === 'mesa' || e.type === 'jukebox' || e.type === 'grua')
                     .map(e => {
-                        const typePrefix = e.type === 'mesa' ? 'M' : e.type === 'jukebox' ? 'J' : 'G';
-                        return `${typePrefix}${e.numero}: ${e.relogioAnterior}`;
+                        const icon = e.type === 'mesa' ? '🎱' : e.type === 'jukebox' ? '🎵' : '🧸';
+                        return `<div>${icon}${e.numero}: <strong>${e.relogioAnterior}</strong></div>`;
                     })
-                    .join(', ');
+                    .join('');
                 
                 tableRows += `
                     <tr>
                         <td class="checkbox-cell"><div class="checkbox"></div></td>
-                        <td>${customer.name}</td>
+                        <td>
+                            <div style="text-transform: uppercase; font-weight: bold; font-size: 9pt;">${customer.name} <span style="font-weight: normal; text-transform: none; color: #666; margin-left: 5px;">- ${customer.endereco}</span></div>
+                            ${activeWarnings.length > 0 ? `
+                                <div style="color: #D32F2F; font-size: 7pt; font-weight: bold; margin-top: 1mm; border-top: 0.2mm solid #FFEBEE; padding-top: 0.5mm;">
+                                    ⚠️ AVISO: ${activeWarnings.map(w => w.message).join(' | ')}
+                                </div>
+                            ` : ''}
+                        </td>
                         <td>${equipamentos.join(', ')}</td>
                         <td class="date-cell">${lastVisitDate}</td>
                         <td class="clocks-cell">${clockReadings || 'N/A'}</td>

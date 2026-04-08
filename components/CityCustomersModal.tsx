@@ -1,8 +1,8 @@
-// components/CityCustomersModal.tsx
-import React from 'react';
 import { Customer, Warning, Billing } from '../types';
 import CustomerCard from './CustomerCard';
 import { XIcon } from './icons/XIcon';
+import { usePagination } from '../hooks/usePagination';
+import { InfiniteScrollTrigger } from './InfiniteScrollTrigger';
 
 interface CityCustomersModalProps {
   city: string;
@@ -26,6 +26,8 @@ interface CityCustomersModalProps {
   onWarningClick: (customer: Customer) => void;
   areValuesHidden: boolean;
   onUpdateCustomer: (updatedCustomer: Partial<Customer> & { id: string }) => void;
+  onOpenDigitalBilling: (customer: Customer) => void;
+  onOpenEsp32Dashboard: (herokuId: string, machineName: string, customerMpStoreId?: string) => void;
 }
 
 const CityCustomersModal: React.FC<CityCustomersModalProps> = ({
@@ -49,7 +51,14 @@ const CityCustomersModal: React.FC<CityCustomersModalProps> = ({
   onWarningClick,
   areValuesHidden,
   onUpdateCustomer,
+  onOpenDigitalBilling,
+  onOpenEsp32Dashboard,
 }) => {
+  const { 
+    slicedItems: slicedCustomers, 
+    loadMore, 
+    hasMore 
+  } = usePagination(customers, 15);
 
   const handleFocus = (customer: Customer) => {
     onFocusCustomer(customer);
@@ -76,9 +85,9 @@ const CityCustomersModal: React.FC<CityCustomersModalProps> = ({
       </header>
 
       <main className="overflow-y-auto h-full pb-16 -mx-4 px-4">
-        {customers.length > 0 ? (
+        {slicedCustomers.length > 0 ? (
           <div className="flex flex-wrap justify-center -m-3">
-            {customers.map(customer => {
+            {slicedCustomers.map(customer => {
               const hasActiveWarning = warnings.some(w => w.customerId === customer.id && !w.isResolved);
               return (
                 <div key={customer.id} className="w-full md:w-1/2 lg:w-1/3 p-3">
@@ -101,10 +110,15 @@ const CityCustomersModal: React.FC<CityCustomersModalProps> = ({
                       onWarningClick={onWarningClick}
                       areValuesHidden={areValuesHidden}
                       onUpdateCustomer={onUpdateCustomer}
+                      onOpenDigitalBilling={onOpenDigitalBilling}
+                      onOpenEsp32Dashboard={onOpenEsp32Dashboard}
                     />
                 </div>
               );
             })}
+            <div className="w-full p-3">
+                <InfiniteScrollTrigger onIntersect={loadMore} hasMore={hasMore} />
+            </div>
           </div>
         ) : (
           <p className="text-center py-10 text-slate-500 dark:text-slate-400">

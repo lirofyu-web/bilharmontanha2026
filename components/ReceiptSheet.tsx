@@ -48,15 +48,19 @@ const ReceiptSheet: React.FC<ReceiptSheetProps> = ({ billing, isProvisional, qrC
             <ReceiptRow label="Reposição de Pelúcias:" value={billing.reposicaoPelucia || 0} />
             <hr className="border-dashed border-black my-2" />
             <ReceiptRow label="ALUGUEL (PAGO AO CLIENTE):" value={`R$ ${formatCurrency(billing.aluguelValor)}`} />
+            {billing.valorDividaPaga && billing.valorDividaPaga > 0 && (
+                <ReceiptRow label="PAGAMENTO DE DÍVIDA:" value={`+ R$ ${formatCurrency(billing.valorDividaPaga)}`} />
+            )}
             <div className="flex justify-between font-bold text-lg pt-2 mt-2 border-t border-dashed border-black">
-                <span>TOTAL (FIRMA):</span>
-                <span>R$ {formatCurrency(billing.valorTotal)}</span>
+                <span>TOTAL RECEBIDO:</span>
+                <span>R$ {formatCurrency((billing.valorTotal || 0) + (billing.valorGorjeta || 0) + (billing.valorDividaPaga || 0))}</span>
             </div>
         </>
     );
 
     const renderMesaJukeboxDetails = () => {
-        const finalFirmaValue = billing.valorTotal - (billing.valorBonus || 0);
+        const debtPaid = billing.valorDividaPaga || 0;
+        const finalFirmaValue = (billing.valorTotal || 0) - (billing.valorBonus || 0) + (billing.valorGorjeta || 0) + debtPaid;
 
         if (isMesa && billing.billingType === 'monthly') {
             return (
@@ -68,16 +72,20 @@ const ReceiptSheet: React.FC<ReceiptSheetProps> = ({ billing, isProvisional, qrC
                         <>
                             <ReceiptRow label="Subtotal (Firma):" value={`R$ ${formatCurrency(billing.valorTotal)}`} />
                             <ReceiptRow label="Desconto / Bônus:" value={`- R$ ${formatCurrency(billing.valorBonus)}`} />
+                            {debtPaid > 0 && <ReceiptRow label="Pagamento de Dívida:" value={`+ R$ ${formatCurrency(debtPaid)}`} />}
                             <div className="flex justify-between font-bold text-lg pt-2 mt-2 border-t border-dashed border-black">
-                                <span>TOTAL (FIRMA):</span>
+                                <span>TOTAL RECEBIDO:</span>
                                 <span>R$ {formatCurrency(finalFirmaValue)}</span>
                             </div>
                         </>
                     ) : (
-                        <div className="flex justify-between font-bold text-lg pt-2 mt-2 border-t border-dashed border-black">
-                            <span>TOTAL (FIRMA):</span>
-                            <span>R$ {formatCurrency(billing.valorTotal)}</span>
-                        </div>
+                        <>
+                            {debtPaid > 0 && <ReceiptRow label="Pagamento de Dívida:" value={`+ R$ ${formatCurrency(debtPaid)}`} />}
+                            <div className="flex justify-between font-bold text-lg pt-2 mt-2 border-t border-dashed border-black">
+                                <span>TOTAL RECEBIDO:</span>
+                                <span>R$ {formatCurrency(finalFirmaValue)}</span>
+                            </div>
+                        </>
                     )}
                 </>
             );
@@ -107,16 +115,20 @@ const ReceiptSheet: React.FC<ReceiptSheetProps> = ({ billing, isProvisional, qrC
                     <>
                         <ReceiptRow label="Subtotal (Firma):" value={`R$ ${formatCurrency(billing.valorTotal)}`} />
                         <ReceiptRow label="Desconto / Bônus:" value={`- R$ ${formatCurrency(billing.valorBonus)}`} />
+                        {debtPaid > 0 && <ReceiptRow label="Pagamento de Dívida:" value={`+ R$ ${formatCurrency(debtPaid)}`} />}
                         <div className="flex justify-between font-bold text-lg pt-2 mt-2 border-t border-dashed border-black">
-                            <span>TOTAL (FIRMA):</span>
+                            <span>TOTAL RECEBIDO:</span>
                             <span>R$ {formatCurrency(finalFirmaValue)}</span>
                         </div>
                     </>
                 ) : (
-                    <div className="flex justify-between font-bold text-lg pt-2 mt-2 border-t border-dashed border-black">
-                        <span>TOTAL (FIRMA):</span>
-                        <span>R$ {formatCurrency(billing.valorTotal)}</span>
-                    </div>
+                    <>
+                        {debtPaid > 0 && <ReceiptRow label="Pagamento de Dívida:" value={`+ R$ ${formatCurrency(debtPaid)}`} />}
+                        <div className="flex justify-between font-bold text-lg pt-2 mt-2 border-t border-dashed border-black">
+                            <span>TOTAL RECEBIDO:</span>
+                            <span>R$ {formatCurrency(finalFirmaValue)}</span>
+                        </div>
+                    </>
                 )}
             </>
         );
@@ -143,6 +155,7 @@ const ReceiptSheet: React.FC<ReceiptSheetProps> = ({ billing, isProvisional, qrC
                             <p className="font-bold">PAGAMENTO:</p>
                             {billing.valorPagoDinheiro && billing.valorPagoDinheiro > 0 && <ReceiptRow label="- Dinheiro:" value={`R$ ${formatCurrency(billing.valorPagoDinheiro)}`} />}
                             {billing.valorPagoPix && billing.valorPagoPix > 0 && <ReceiptRow label="- PIX:" value={`R$ ${formatCurrency(billing.valorPagoPix)}`} />}
+                            {billing.valorDividaPaga && billing.valorDividaPaga > 0 && <ReceiptRow label="- Pagamento Dívida:" value={`R$ ${formatCurrency(billing.valorDividaPaga)}`} />}
                             {billing.valorDebitoNegativo && billing.valorDebitoNegativo > 0 && <ReceiptRow label="- Negativo:" value={`R$ ${formatCurrency(billing.valorDebitoNegativo)}`} />}
                         </div>
                     ) : (

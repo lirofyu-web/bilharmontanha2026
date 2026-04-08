@@ -22,6 +22,8 @@ import { TrashIcon } from '../components/icons/TrashIcon';
 import { RulerIcon } from '../components/icons/RulerIcon';
 import WarningDetailsModal from '../components/WarningDetailsModal';
 import HistoryModal from '../components/HistoryModal';
+import { usePagination } from '../hooks/usePagination';
+import { InfiniteScrollTrigger } from '../components/InfiniteScrollTrigger';
 
 interface ClientesViewProps {
   customers: Customer[];
@@ -46,6 +48,8 @@ interface ClientesViewProps {
   onOpenRouteCreator: () => void;
   onSaveRoute: (name: string, customerIds: string[]) => Promise<void>;
   onDeleteRoute: (routeId: string) => Promise<void>;
+  onOpenDigitalBilling: (customer: Customer) => void;
+  onOpenEsp32Dashboard: (herokuId: string, machineName: string, customerMpStoreId?: string) => void;
 }
 
 type EquipmentFilter = 'all' | 'mesa' | 'jukebox' | 'grua';
@@ -74,6 +78,94 @@ const TabButton: React.FC<{label: string, icon: React.ReactNode, active: boolean
     </button>
 );
 
+const RouteSection: React.FC<{
+    route: Route;
+    customers: Customer[];
+    billings: Billing[];
+    warnings: Warning[];
+    onBillCustomer: (customer: Customer) => void;
+    onEditCustomer: (customer: Customer) => void;
+    onDeleteCustomer: (customer: Customer) => void;
+    onPayDebtCustomer: (customer: Customer) => void;
+    onHistoryCustomer: (customer: Customer) => void;
+    showNotification: (message: string, type?: 'success' | 'error') => void;
+    onFocusCustomer: (customer: Customer) => void;
+    onFichaActions: (customer: Customer) => void;
+    onLocationActions: (customer: Customer) => void;
+    onWhatsAppActions: (customer: Customer) => void;
+    onFinalizePendingPayment: (billing: Billing) => void;
+    onPendingPaymentAction: (customer: Customer, billing: Billing) => void;
+    areValuesHidden: boolean;
+    onUpdateCustomer: (updatedCustomer: Partial<Customer> & { id: string }) => void;
+    onWarningClick: (customer: Customer) => void;
+    onOpenDigitalBilling: (customer: Customer) => void;
+    onOpenEsp32Dashboard: (herokuId: string, machineName: string, customerMpStoreId?: string) => void;
+    onDeleteRoute: (routeId: string) => Promise<void>;
+}> = ({ 
+    route, customers, billings, warnings, onBillCustomer, onEditCustomer, onDeleteCustomer, 
+    onPayDebtCustomer, onHistoryCustomer, showNotification, onFocusCustomer, onFichaActions, 
+    onLocationActions, onWhatsAppActions, onFinalizePendingPayment, onPendingPaymentAction, 
+    areValuesHidden, onUpdateCustomer, onWarningClick, onOpenDigitalBilling, onOpenEsp32Dashboard, onDeleteRoute 
+}) => {
+    const routeCustomers = useMemo(() => 
+        route.customerIds.map(id => customers.find(c => c.id === id)).filter((c): c is Customer => !!c),
+    [route.customerIds, customers]);
+
+    const { slicedItems, loadMore, hasMore } = usePagination(routeCustomers, 15);
+
+    return (
+        <section className="bg-slate-100 dark:bg-slate-800 p-4 rounded-lg shadow-lg border border-slate-200 dark:border-slate-700">
+            <div className="flex justify-between items-center mb-4">
+                <h2 className="text-2xl font-bold text-indigo-600 dark:text-indigo-400 flex items-center gap-2">
+                    <MapIcon className="w-6 h-6 text-slate-400" />
+                    {route.name} ({route.customerIds.length})
+                </h2>
+                <button onClick={() => onDeleteRoute(route.id)} className="text-red-500 hover:text-red-400 p-2 rounded-full hover:bg-red-500/10" title="Excluir Rota">
+                    <TrashIcon className="w-5 h-5" />
+                </button>
+            </div>
+            <div className="flex flex-col gap-4">
+                {slicedItems.length > 0 ? (
+                    <>
+                        {slicedItems.map((customer, idx) => (
+                            <div key={customer.id} className="flex items-center gap-4">
+                                <span className="font-bold text-xl text-lime-500 w-8 text-center">{idx + 1}.</span>
+                                <div className="flex-grow">
+                                    <CustomerCard 
+                                        customer={customer} 
+                                        billings={billings} 
+                                        hasActiveWarning={warnings.some(w => w.customerId === customer.id && !w.isResolved)} 
+                                        onBill={onBillCustomer} 
+                                        onEdit={onEditCustomer} 
+                                        onDelete={onDeleteCustomer} 
+                                        onPayDebt={onPayDebtCustomer} 
+                                        onHistory={onHistoryCustomer} 
+                                        showNotification={showNotification} 
+                                        onFocusCustomer={onFocusCustomer} 
+                                        onFichaActions={onFichaActions} 
+                                        onLocationActions={onLocationActions} 
+                                        onWhatsAppActions={onWhatsAppActions} 
+                                        onFinalizePendingPayment={onFinalizePendingPayment} 
+                                        onPendingPaymentAction={onPendingPaymentAction} 
+                                        areValuesHidden={areValuesHidden} 
+                                        onUpdateCustomer={onUpdateCustomer} 
+                                        onWarningClick={() => onWarningClick(customer)} 
+                                        onOpenDigitalBilling={onOpenDigitalBilling} 
+                                        onOpenEsp32Dashboard={onOpenEsp32Dashboard} 
+                                    />
+                                </div>
+                            </div>
+                        ))}
+                        <InfiniteScrollTrigger onIntersect={loadMore} hasMore={hasMore} className="mt-2" />
+                    </>
+                ) : (
+                    <p className="text-center py-4 text-slate-500 italic">Nenhum cliente nesta rota.</p>
+                )}
+            </div>
+        </section>
+    );
+};
+
 const ClientesView: React.FC<ClientesViewProps> = ({ 
     customers, 
     warnings,
@@ -97,6 +189,8 @@ const ClientesView: React.FC<ClientesViewProps> = ({
     onOpenRouteCreator,
     onSaveRoute,
     onDeleteRoute,
+    onOpenDigitalBilling,
+    onOpenEsp32Dashboard,
 }) => {
   const [viewMode, setViewMode] = useState<ViewMode>('cidades');
   const [searchQuery, setSearchQuery] = useState('');
@@ -240,7 +334,7 @@ const ClientesView: React.FC<ClientesViewProps> = ({
             return (
                 <section key={city} className={`${cardBgColor} ${cardBorderColor} p-4 rounded-lg shadow-lg border`}>
                     <div className="flex flex-wrap justify-between items-center gap-x-4 gap-y-2 mb-4"><h2 className="text-2xl font-bold text-red-600 dark:text-red-500 flex items-center gap-2"><LocationMarkerIcon className="w-6 h-6 text-slate-400" />{city} ({cityCustomers.length})</h2><div className="flex items-center gap-4"><div className="flex items-center gap-1.5 text-green-500" title="Clientes visitados nos últimos 25 dias"><GreenBilliardBallIcon className="w-4 h-4" /><span className="font-bold">{stats.visited}</span></div><div className="flex items-center gap-1.5 text-red-500" title="Clientes com visita pendente"><RedBilliardBallIcon className="w-4 h-4" /><span className="font-bold">{stats.notVisited}</span></div><button onClick={() => handleOpenCityCustomers(city)} className="text-sm font-semibold text-lime-600 dark:text-lime-400 hover:underline">Ver Todos &rarr;</button></div></div>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">{cityCustomers.slice(0, 8).map(customer => (<CustomerCard key={customer.id} customer={customer} billings={billings} hasActiveWarning={warnings.some(w => w.customerId === customer.id && !w.isResolved)} onBill={onBillCustomer} onEdit={onEditCustomer} onDelete={onDeleteCustomer} onPayDebt={onPayDebtCustomer} onHistory={onHistoryCustomer} showNotification={showNotification} onFocusCustomer={setFocusedCustomer} onFichaActions={onFichaActions} onLocationActions={onLocationActions} onWhatsAppActions={onWhatsAppActions} onFinalizePendingPayment={onFinalizePendingPayment} onPendingPaymentAction={onPendingPaymentAction} areValuesHidden={areValuesHidden} onUpdateCustomer={onUpdateCustomer} onWarningClick={handleWarningClick} />))}</div>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">{cityCustomers.slice(0, 8).map(customer => (<CustomerCard key={customer.id} customer={customer} billings={billings} hasActiveWarning={warnings.some(w => w.customerId === customer.id && !w.isResolved)} onBill={onBillCustomer} onEdit={onEditCustomer} onDelete={onDeleteCustomer} onPayDebt={onPayDebtCustomer} onHistory={onHistoryCustomer} showNotification={showNotification} onFocusCustomer={setFocusedCustomer} onFichaActions={onFichaActions} onLocationActions={onLocationActions} onWhatsAppActions={onWhatsAppActions} onFinalizePendingPayment={onFinalizePendingPayment} onPendingPaymentAction={onPendingPaymentAction} areValuesHidden={areValuesHidden} onUpdateCustomer={onUpdateCustomer} onWarningClick={handleWarningClick} onOpenDigitalBilling={onOpenDigitalBilling} onOpenEsp32Dashboard={onOpenEsp32Dashboard} />))}</div>
                 </section>
             );
             }) : (
@@ -254,15 +348,33 @@ const ClientesView: React.FC<ClientesViewProps> = ({
       ) : (
         <div className="space-y-6">
             <button onClick={onOpenRouteCreator} className="w-full inline-flex items-center justify-center gap-2 bg-indigo-600 text-white font-bold py-3 px-6 rounded-lg hover:bg-indigo-500 transition-colors shadow-lg"><RulerIcon className="w-5 h-5" /><span>Criar Nova Rota</span></button>
-            {routes.map((route) => {
-                const routeCustomers = route.customerIds.map(id => customers.find(c => c.id === id)).filter((c): c is Customer => !!c);
-                return(
-                    <section key={route.id} className="bg-slate-100 dark:bg-slate-800 p-4 rounded-lg shadow-lg border border-slate-200 dark:border-slate-700">
-                        <div className="flex justify-between items-center mb-4"><h2 className="text-2xl font-bold text-indigo-600 dark:text-indigo-400 flex items-center gap-2"><MapIcon className="w-6 h-6 text-slate-400" />{route.name} ({route.customerIds.length})</h2><button onClick={() => onDeleteRoute(route.id)} className="text-red-500 hover:text-red-400 p-2 rounded-full hover:bg-red-500/10" title="Excluir Rota"><TrashIcon className="w-5 h-5" /></button></div>
-                        <div className="flex flex-col gap-4">{routeCustomers.map((customer, idx) => (<div key={customer.id} className="flex items-center gap-4"><span className="font-bold text-xl text-lime-500 w-8 text-center">{idx + 1}.</span><div className="flex-grow"><CustomerCard customer={customer} billings={billings} hasActiveWarning={warnings.some(w => w.customerId === customer.id && !w.isResolved)} onBill={onBillCustomer} onEdit={onEditCustomer} onDelete={onDeleteCustomer} onPayDebt={onPayDebtCustomer} onHistory={onHistoryCustomer} showNotification={showNotification} onFocusCustomer={setFocusedCustomer} onFichaActions={onFichaActions} onLocationActions={onLocationActions} onWhatsAppActions={onWhatsAppActions} onFinalizePendingPayment={onFinalizePendingPayment} onPendingPaymentAction={onPendingPaymentAction} areValuesHidden={areValuesHidden} onUpdateCustomer={onUpdateCustomer} onWarningClick={handleWarningClick} /></div></div>))}</div>
-                    </section>
-                )
-            })}
+            {routes.map((route) => (
+                <RouteSection 
+                    key={route.id} 
+                    route={route} 
+                    customers={customers} 
+                    billings={billings} 
+                    warnings={warnings}
+                    onBillCustomer={onBillCustomer}
+                    onEditCustomer={onEditCustomer}
+                    onDeleteCustomer={onDeleteCustomer}
+                    onPayDebtCustomer={onPayDebtCustomer}
+                    onHistoryCustomer={onHistoryCustomer}
+                    showNotification={showNotification}
+                    onFocusCustomer={setFocusedCustomer}
+                    onFichaActions={onFichaActions}
+                    onLocationActions={onLocationActions}
+                    onWhatsAppActions={onWhatsAppActions}
+                    onFinalizePendingPayment={onFinalizePendingPayment}
+                    onPendingPaymentAction={onPendingPaymentAction}
+                    areValuesHidden={areValuesHidden}
+                    onUpdateCustomer={onUpdateCustomer}
+                    onWarningClick={handleWarningClick}
+                    onOpenDigitalBilling={onOpenDigitalBilling}
+                    onOpenEsp32Dashboard={onOpenEsp32Dashboard}
+                    onDeleteRoute={onDeleteRoute}
+                />
+            ))}
             {routes.length === 0 && <div className="text-center py-16 text-slate-500 dark:text-slate-400 italic">Nenhuma rota salva. Clique em "Criar Nova Rota" para começar.</div>}
         </div>
       )}
@@ -275,8 +387,8 @@ const ClientesView: React.FC<ClientesViewProps> = ({
         onSelectCity={handleOpenCityCustomers} 
       />
 
-      {viewingCity && (<CityCustomersModal city={viewingCity} customers={customersByCity[viewingCity] || []} warnings={warnings} billings={billings} onClose={() => setViewingCity(null)} onBillCustomer={onBillCustomer} onEditCustomer={onEditCustomer} onDeleteCustomer={onDeleteCustomer} onPayDebtCustomer={onPayDebtCustomer} onHistoryCustomer={onHistoryCustomer} showNotification={showNotification} onFocusCustomer={setFocusedCustomer} onFichaActions={onFichaActions} onLocationActions={onLocationActions} onWhatsAppActions={onWhatsAppActions} onFinalizePendingPayment={onFinalizePendingPayment} onPendingPaymentAction={onPendingPaymentAction} areValuesHidden={areValuesHidden} onUpdateCustomer={onUpdateCustomer} onWarningClick={handleWarningClick} />)}
-      {focusedCustomer && <FullScreenCustomerView customer={focusedCustomer} onClose={() => setFocusedCustomer(null)} warnings={warnings} onWarningClick={handleWarningClick} />}
+      {viewingCity && (<CityCustomersModal city={viewingCity} customers={customersByCity[viewingCity] || []} warnings={warnings} billings={billings} onClose={() => setViewingCity(null)} onBillCustomer={onBillCustomer} onEditCustomer={onEditCustomer} onDeleteCustomer={onDeleteCustomer} onPayDebtCustomer={onPayDebtCustomer} onHistoryCustomer={onHistoryCustomer} showNotification={showNotification} onFocusCustomer={setFocusedCustomer} onFichaActions={onFichaActions} onLocationActions={onLocationActions} onWhatsAppActions={onWhatsAppActions} onFinalizePendingPayment={onFinalizePendingPayment} onPendingPaymentAction={onPendingPaymentAction} areValuesHidden={areValuesHidden} onUpdateCustomer={onUpdateCustomer} onWarningClick={handleWarningClick} onOpenDigitalBilling={onOpenDigitalBilling} onOpenEsp32Dashboard={onOpenEsp32Dashboard} />)}
+      {focusedCustomer && <FullScreenCustomerView customer={focusedCustomer} onClose={() => setFocusedCustomer(null)} warnings={warnings} onWarningClick={handleWarningClick} onOpenDigitalBilling={onOpenDigitalBilling} onOpenEsp32Dashboard={onOpenEsp32Dashboard} />}
       <WarningDetailsModal isOpen={!!viewingWarning} onClose={() => setViewingWarning(null)} customer={viewingWarning?.customer || null} warning={viewingWarning?.warning || null} />
       <HistoryModal isOpen={!!historyCustomer} onClose={() => setHistoryCustomer(null)} customer={historyCustomer} billings={billings} equipments={allEquipments} />
     </div>

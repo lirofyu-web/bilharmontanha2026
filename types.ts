@@ -9,6 +9,7 @@ export interface Customer {
     endereco: string;
     numero: string;
     telefone: string;
+    cpfRg?: string;
     linhaNumero: string;
     estado?: string;
     latitude?: number;
@@ -18,6 +19,8 @@ export interface Customer {
     debtAmount: number;
     lastVisitedAt: Date | null;
     pendingPayment?: boolean;
+    mercadoPagoStoreId?: string;
+    pontoReferencia?: string;
 }
 
 export interface Equipment {
@@ -25,7 +28,7 @@ export interface Equipment {
     type: 'mesa' | 'jukebox' | 'grua';
     numero: string;
     relogioAnterior: number;
-    valorFicha: number;
+    valorFicha?: number;
     billingType?: 'perPlay' | 'monthly';
     monthlyFeeValue?: number;
     parteFirma?: number;
@@ -40,6 +43,8 @@ export interface Equipment {
     porcentagemJukeboxFirma?: number;
     porcentagemJukeboxCliente?: number;
     quantidadePelucia?: number;
+    serialNumber?: string;
+    herokuId?: string;
 }
 
 export interface Billing {
@@ -52,6 +57,7 @@ export interface Billing {
     relogioAtual: number;
     totalFichas?: number;
     valorFicha?: number;
+    billingType?: 'perPlay' | 'monthly';
     totalBruto?: number;
     comissaoPercentual?: number;
     valorComissao?: number;
@@ -70,6 +76,7 @@ export interface Billing {
     partidasJogadas?: number;
     valorPagoDinheiro?: number;
     valorPagoPix?: number;
+    valorGorjeta?: number;
     parteFirma?: number;
     parteCliente?: number;
     valorBruto?: number;
@@ -84,6 +91,7 @@ export interface Billing {
     reposicaoPelucia?: number;
     quantidadePelucia?: number;
     equipmentNumero?: string;
+    valorDividaPaga?: number;
 }
 
 export interface Expense {
@@ -104,6 +112,7 @@ export interface DebtPayment {
     amountPaidDinheiro?: number;
     amountPaidPix?: number;
     amountPaidCartao?: number;
+    equipmentType: 'mesa' | 'jukebox' | 'grua';
 }
 
 export interface Warning {
@@ -111,6 +120,7 @@ export interface Warning {
     customerId: string;
     customerName: string;
     message: string;
+    level: 'low' | 'medium' | 'high' | 'critical';
     createdAt: Date;
     isResolved: boolean;
 }
@@ -122,7 +132,7 @@ export interface Route {
     createdAt: Date;
 }
 
-export type View = 'DASHBOARD' | 'CLIENTES' | 'COBRANCAS' | 'DESPESAS' | 'ROTAS' | 'RELATORIOS' | 'CONFIGURACOES';
+export type View = 'DASHBOARD' | 'CLIENTES' | 'COBRANCAS' | 'DESPESAS' | 'ROTAS' | 'RELATORIOS' | 'CONFIGURACOES' | 'INDUSTRIAL' | 'MAQUINAS';
 
 export type Theme = 'light' | 'dark';
 
@@ -144,4 +154,6 @@ export interface UserProfile {
     createdAt: Date;
     privacyPinHash: string;
     pixKeys?: PixKey[];
+    mercadoPagoToken?: string;
+    mercadoPagoStoreId?: string;
 }

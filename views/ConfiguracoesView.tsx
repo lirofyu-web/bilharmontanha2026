@@ -1,6 +1,5 @@
-
-// views/ConfiguracoesView.tsx
 import React, { useState, useRef, useEffect } from 'react';
+import { Capacitor } from '@capacitor/core';
 import { auth } from '../firebase';
 import PageHeader from '../components/PageHeader';
 import { CloudUploadIcon, PlusIcon, StarIcon, TrashIcon, UserIcon, XIcon, LockClosedIcon, DatabaseIcon, SunIcon, MoonIcon, InstallIcon } from '../components/icons';
@@ -25,6 +24,8 @@ interface ConfiguracoesViewProps {
   isPrivacyModeEnabled: boolean;
   onActivatePrivacyMode: () => void;
   onDeactivatePrivacyMode: () => void;
+  isIndustrialMode: boolean;
+  onToggleIndustrialMode: (enabled: boolean) => void;
 }
 
 const ColorPicker: React.FC<{ label: string, color: string, onChange: (color: string) => void }> = ({ label, color, onChange }) => (
@@ -54,6 +55,8 @@ const ConfiguracoesView: React.FC<ConfiguracoesViewProps> = ({
   isPrivacyModeEnabled,
   onActivatePrivacyMode,
   onDeactivatePrivacyMode,
+  isIndustrialMode,
+  onToggleIndustrialMode,
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [savedUsers, setSavedUsers] = useState<SavedUser[]>([]);
@@ -251,6 +254,51 @@ const ConfiguracoesView: React.FC<ConfiguracoesViewProps> = ({
             </div>
         </section>
         
+        {/* Mercado Pago Integration Section */}
+        <section>
+          <h2 className="text-2xl font-semibold text-white mb-6 border-b border-slate-700 pb-2">Integrações Mercado Pago</h2>
+          <div className="bg-slate-800 p-6 rounded-lg shadow-lg border border-slate-700">
+            <h3 className="text-xl font-bold text-white mb-2">Token de Acesso (API)</h3>
+            <p className="text-slate-400 mb-4">Insira o seu <strong>Access Token</strong> de Produção do Mercado Pago para habilitar consultas de faturamento e geração de QR Codes.</p>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-300 mb-1">Mercado Pago Access Token</label>
+                <div className="flex gap-2">
+                    <input 
+                      type="password" 
+                      placeholder="APP_USR-..." 
+                      defaultValue={userProfile?.mercadoPagoToken || ''} 
+                      onBlur={async (e) => {
+                        const token = e.target.value.trim();
+                        if (token !== (userProfile?.mercadoPagoToken || '')) {
+                          await onUpdateUserProfile({ mercadoPagoToken: token });
+                          showNotification('Token Mercado Pago atualizado!', 'success');
+                        }
+                      }}
+                      className="flex-grow bg-slate-700 border border-slate-600 rounded-md py-2 px-3 text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500" 
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-300 mb-1">ID da Loja (PIX MONTANHA - Frota)</label>
+                  <input 
+                      type="text" 
+                      placeholder="Ex: 12345678" 
+                      defaultValue={userProfile?.mercadoPagoStoreId || ''} 
+                      onBlur={async (e) => {
+                        const storeId = e.target.value.trim();
+                        if (storeId !== (userProfile?.mercadoPagoStoreId || '')) {
+                          await onUpdateUserProfile({ mercadoPagoStoreId: storeId });
+                          showNotification('ID da Loja Global atualizado!', 'success');
+                        }
+                      }}
+                      className="w-full bg-slate-700 border border-slate-600 rounded-md py-2 px-3 text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500" 
+                  />
+                </div>
+            </div>
+          </div>
+        </section>
+        
         {/* Account Section */}
         <section>
             <h2 className="text-2xl font-semibold text-slate-900 dark:text-white mb-6 border-b border-slate-200 dark:border-slate-700 pb-2">Gerenciamento de Contas</h2>
@@ -305,6 +353,25 @@ const ConfiguracoesView: React.FC<ConfiguracoesViewProps> = ({
           </div>
         </section>
 
+        {/* Industrial Mode Section */}
+        <section>
+            <h2 className="text-2xl font-semibold text-slate-900 dark:text-white mb-6 border-b border-slate-200 dark:border-slate-700 pb-2">Modo de Operação</h2>
+            <div className="bg-white dark:bg-slate-800 p-6 rounded-lg shadow-lg border border-slate-200 dark:border-slate-700">
+                <div className="flex items-center justify-between gap-4">
+                    <div>
+                        <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-2">Modo Industrial (Sunmi P2)</h3>
+                        <p className="text-slate-500 dark:text-slate-400">Ativa a interface de alto contraste e botões ampliados para terminais de hardware. Ideal para uso em campo.</p>
+                    </div>
+                    <button 
+                        onClick={() => onToggleIndustrialMode(!isIndustrialMode)}
+                        className={`relative inline-flex h-8 w-14 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${isIndustrialMode ? 'bg-yellow-500' : 'bg-slate-300 dark:bg-slate-600'}`}
+                    >
+                        <span className={`pointer-events-none inline-block h-7 w-7 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${isIndustrialMode ? 'translate-x-6' : 'translate-x-0'}`}></span>
+                    </button>
+                </div>
+            </div>
+        </section>
+
         {/* Storage Section */}
         <section>
           <h2 className="text-2xl font-semibold text-slate-900 dark:text-white mb-6 border-b border-slate-200 dark:border-slate-700 pb-2">Armazenamento</h2>
@@ -313,19 +380,26 @@ const ConfiguracoesView: React.FC<ConfiguracoesViewProps> = ({
             <p className="text-slate-500 dark:text-slate-400 mb-4">O aplicativo armazena dados localmente para funcionar offline. Este é o espaço utilizado no seu dispositivo.</p>
             {isLoadingStorage ? (
               <p className="text-slate-500 dark:text-slate-400">Calculando uso de armazenamento...</p>
-            ) : storageInfo && storageInfo.quota > 0 ? (
+            ) : storageInfo && (storageInfo.usage > 0 || storageInfo.quota > 0) ? (
               <div>
                 <div className="flex justify-between items-baseline mb-1">
-                  <span className="text-sm font-medium text-slate-700 dark:text-slate-200">Usado: {formatBytes(storageInfo.usage)}</span>
-                  <span className="text-sm text-slate-500 dark:text-slate-400">Total: {formatBytes(storageInfo.quota)}</span>
+                  <span className="text-sm font-medium text-slate-700 dark:text-slate-200">Usado: {formatBytes(storageInfo.usage || 0)}</span>
+                  {storageInfo.quota > 0 && <span className="text-sm text-slate-500 dark:text-slate-400">Total: {formatBytes(storageInfo.quota)}</span>}
                 </div>
-                <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-4 overflow-hidden">
-                  <div className="bg-lime-500 h-4 rounded-full transition-all duration-500" style={{ width: `${(storageInfo.usage / storageInfo.quota) * 100}%` }}></div>
-                </div>
-                <p className="text-right text-xs text-slate-500 dark:text-slate-400 mt-1">{((storageInfo.usage / storageInfo.quota) * 100).toFixed(2)}% utilizado</p>
+                {storageInfo.quota > 0 && (
+                  <>
+                    <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-4 overflow-hidden">
+                      <div className="bg-lime-500 h-4 rounded-full transition-all duration-500" style={{ width: `${(storageInfo.usage / storageInfo.quota) * 100}%` }}></div>
+                    </div>
+                    <p className="text-right text-xs text-slate-500 dark:text-slate-400 mt-1">{((storageInfo.usage / storageInfo.quota) * 100).toFixed(2)}% utilizado</p>
+                  </>
+                )}
               </div>
             ) : (
-              <p className="text-amber-500 dark:text-amber-400">Não foi possível obter informações de armazenamento do seu navegador.</p>
+              <div>
+                  <p className="text-amber-500 dark:text-amber-400 font-medium">Leitura gráfica não suportada neste dispositivo.</p>
+                  <p className="text-slate-500 dark:text-slate-400 text-sm mt-1">O seu hardware ou sistema operacional restringe a leitura de contagem de bytes via Aplicativo Nativo. Não se preocupe, o armazenamento offline funciona perfeitamente utilizando a capacidade total do aparelho.</p>
+              </div>
             )}
           </div>
         </section>

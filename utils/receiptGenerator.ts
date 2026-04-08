@@ -20,8 +20,9 @@ export function generateBillingText(billing: Billing, isProvisional: boolean): s
     const isGrua = billing.equipmentType === 'grua';
     
     let details = '';
-
     if (isGrua) {
+        const debtPaid = billing.valorDividaPaga || 0;
+        const totalValue = (billing.valorTotal || 0) + (billing.valorGorjeta || 0) + debtPaid;
         details = `
 EQUIPAMENTO: GRUA ${billing.equipmentNumero}
 Leitura Anterior: ${billing.relogioAnterior}
@@ -36,17 +37,21 @@ Sobra de Pelucias: ${billing.sobraPelucia || 0}
 Reposicao de Pelucias: ${billing.reposicaoPelucia || 0}
 --------------------------------
 ALUGUEL (PAGO AO CLIENTE): R$ ${formatCurrency(billing.aluguelValor)}
---------------------------------
-*TOTAL (FIRMA): R$ ${formatCurrency(billing.valorTotal)}*
+${debtPaid > 0 ? `PAGAMENTO DE DIVIDA: R$ ${formatCurrency(debtPaid)}\n--------------------------------\n` : ''}*TOTAL RECEBIDO: R$ ${formatCurrency(totalValue)}*
         `.trim();
     } else { // Mesa or Jukebox
-        const totalValue = (billing.valorTotal || 0) - (billing.valorBonus || 0);
-        const totalSection = (billing.valorBonus && billing.valorBonus > 0)
+        const debtPaid = billing.valorDividaPaga || 0;
+        const totalValue = (billing.valorTotal || 0) - (billing.valorBonus || 0) + (billing.valorGorjeta || 0) + debtPaid;
+        let totalSection = (billing.valorBonus && billing.valorBonus > 0)
           ? `Subtotal (Firma): R$ ${formatCurrency(billing.valorTotal)}\n` +
-            `Desconto / Bonus: - R$ ${formatCurrency(billing.valorBonus)}\n` +
-            `--------------------------------\n` +
-            `*TOTAL (FIRMA): R$ ${formatCurrency(totalValue)}*`
-          : `*TOTAL (FIRMA): R$ ${formatCurrency(totalValue)}*`;
+            `Desconto / Bonus: - R$ ${formatCurrency(billing.valorBonus)}\n`
+          : `Subtotal (Firma): R$ ${formatCurrency(billing.valorTotal)}\n`;
+
+        if (debtPaid > 0) {
+            totalSection += `Pagamento de Dívida: + R$ ${formatCurrency(debtPaid)}\n`;
+        }
+
+        totalSection += `--------------------------------\n*TOTAL RECEBIDO: R$ ${formatCurrency(totalValue)}*`;
 
         if (isMesa && billing.billingType === 'monthly') {
             details = `
@@ -80,7 +85,7 @@ ${totalSection}
     }
 
     let paymentDetails = '';
-    if (!isProvisional && !isGrua) {
+    if (!isProvisional) {
         if (billing.paymentMethod === 'misto') {
             const parts = [
                 (billing.valorPagoDinheiro || 0) > 0 && `- Dinheiro: R$ ${formatCurrency(billing.valorPagoDinheiro)}`,
@@ -106,7 +111,8 @@ Chave (Celular): ${PIX_KEY}
 
 
 export function generateDebtText(debtPayment: DebtPayment): string {
-    return `*MONTANHA BILHAR & JUKEBOX*\n${COMPANY_DETAILS}\nCOMPROVANTE DE PAGAMENTO DE DIVIDA\n--------------------------------\nCLIENTE: ${debtPayment.customerName}\nDATA: ${new Date(debtPayment.paidAt).toLocaleString('pt-BR')}\n--------------------------------\n*VALOR PAGO: R$ ${formatCurrency(debtPayment.amountPaid)}*\nPagamento: ${PAYMENT_METHOD_TEXT[debtPayment.paymentMethod as keyof typeof PAYMENT_METHOD_TEXT] || 'N/A'}\n    `.trim();
+    const type = debtPayment.equipmentType.toUpperCase();
+    return `*MONTANHA BILHAR & JUKEBOX*\n${COMPANY_DETAILS}\nCOMPROVANTE DE DIVIDA - ${type}\n--------------------------------\nCLIENTE: ${debtPayment.customerName}\nDATA: ${new Date(debtPayment.paidAt).toLocaleString('pt-BR')}\n--------------------------------\n*VALOR PAGO: R$ ${formatCurrency(debtPayment.amountPaid)}*\nPagamento: ${PAYMENT_METHOD_TEXT[debtPayment.paymentMethod as keyof typeof PAYMENT_METHOD_TEXT] || 'N/A'}\n    `.trim();
 }
 
 export function generateEquipmentLabelText(equipment: Equipment): string {

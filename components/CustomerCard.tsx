@@ -16,6 +16,7 @@ import { GreenBilliardBallIcon } from './icons/GreenBilliardBallIcon';
 import { YellowBilliardBallIcon } from './icons/YellowBilliardBallIcon';
 import { PurpleBilliardBallIcon } from './icons/PurpleBilliardBallIcon';
 import { DocumentTextIcon } from './icons/DocumentTextIcon';
+import { CreditCardIcon } from './icons/CreditCardIcon';
 
 interface CustomerCardProps {
   customer: Customer;
@@ -36,6 +37,8 @@ interface CustomerCardProps {
   onFocusCustomer: (customer: Customer) => void;
   areValuesHidden: boolean;
   onUpdateCustomer: (updatedCustomer: Partial<Customer> & { id: string }) => void;
+  onOpenDigitalBilling?: (customer: Customer) => void;
+  onOpenEsp32Dashboard?: (herokuId: string, machineName: string, customerMpStoreId?: string) => void;
 }
 
 const EquipmentIcon: React.FC<{ type: Equipment['type'], className?: string }> = ({ type, className }) => {
@@ -67,7 +70,7 @@ const EquipmentDetailRow: React.FC<{ label: string; value: string | number | und
 };
 
 
-const CustomerCard: React.FC<CustomerCardProps> = ({ customer, billings, onBill, onEdit, onDelete, onPayDebt, onHistory, onLocationActions, onWhatsAppActions, onFichaActions, onWarningClick, hasActiveWarning, showNotification, onFocusCustomer, onFinalizePendingPayment, onPendingPaymentAction, areValuesHidden, onUpdateCustomer }) => {
+const CustomerCard: React.FC<CustomerCardProps> = ({ customer, billings, onBill, onEdit, onDelete, onPayDebt, onHistory, onLocationActions, onWhatsAppActions, onFichaActions, onWarningClick, hasActiveWarning, showNotification, onFocusCustomer, onFinalizePendingPayment, onPendingPaymentAction, areValuesHidden, onUpdateCustomer, onOpenDigitalBilling, onOpenEsp32Dashboard }) => {
     const [isExpanded, setIsExpanded] = useState(false);
 
     const pendingBilling = useMemo(() => {
@@ -205,6 +208,32 @@ const CustomerCard: React.FC<CustomerCardProps> = ({ customer, billings, onBill,
                             title={customer.latitude ? 'Ver localização' : 'Salvar localização atual'}
                         />
                     </div>
+                </div>
+
+                {/* Standardized Integration Buttons */}
+                <div className="mt-2 grid grid-cols-2 gap-1.5">
+                    {customer.mercadoPagoStoreId && onOpenDigitalBilling && (
+                        <ActionButton
+                            onClick={() => onOpenDigitalBilling(customer)}
+                            icon={<CreditCardIcon className="w-5 h-5" />}
+                            label="MP DIGITAL"
+                            colorClass="bg-emerald-600"
+                            title="Faturamento Digital"
+                        />
+                    )}
+                    
+                    {customer.equipment.some(e => (e as any).herokuId) && onOpenEsp32Dashboard && (
+                        <ActionButton
+                            onClick={() => {
+                                const equip = customer.equipment.find(e => (e as any).herokuId);
+                                if (equip) onOpenEsp32Dashboard((equip as any).herokuId, `${customer.name} - ${equip.numero}`, customer.mercadoPagoStoreId);
+                            }}
+                            icon={<div className="w-2.5 h-2.5 bg-green-400 rounded-full animate-pulse shadow-[0_0_5px_rgba(74,222,128,0.5)]"></div>}
+                            label="CONTROLE PIX"
+                            colorClass="bg-blue-600"
+                            title="Gestão Remota ESP32"
+                        />
+                    )}
                 </div>
             </div>
 

@@ -50,6 +50,7 @@ export * from './PlusIcon';
 export * from './PrinterIcon';
 export * from './PurpleBilliardBallIcon';
 export * from './QrCodeIcon';
+export * from './PixIcon';
 export * from './ReceiptIcon';
 export * from './RedBilliardBallIcon';
 export * from './RulerIcon';

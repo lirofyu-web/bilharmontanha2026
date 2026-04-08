@@ -7,7 +7,7 @@ import QRCode from 'qrcode';
 import { auth, db, processFirestoreDoc } from './firebase';
 
 import { Customer, Billing, Expense, DebtPayment, Equipment, Warning, View, Theme, UserProfile, SavedUser, Route } from './types';
-import { queueMutation, processSyncQueue, clearOfflineQueue, processPayloadForFirestore, getPendingMutationsCount } from './utils/offlineSync';
+import { processPayloadForFirestore } from './utils/firestoreUtils';
 import { v4 as uuidv4 } from 'uuid';
 import { Capacitor } from '@capacitor/core';
 import { Network } from '@capacitor/network';
@@ -36,7 +36,7 @@ import { playSuccessSound, unlockAudio } from './utils/soundPlayer';
 import DebtStatementSheet from './components/DebtStatementSheet';
 import { nativePrintPDF } from './utils/nativePrint';
 
-// Modals
+// Modals & Views
 import BillingModal from './components/BillingModal';
 import EditCustomerModal from './components/EditCustomerModal';
 import DebtPaymentModal from './components/DebtPaymentModal';
@@ -57,15 +57,22 @@ import PrivacyPinModal from './components/PrivacyPinModal';
 import PendingPaymentActionModal from './components/PendingPaymentActionModal';
 import RouteCreationModal from './components/RouteCreationModal';
 import PrintableCustomerSheetView from './components/PrintableCustomerSheetView';
+import IndustrialView from './views/IndustrialView';
+import DigitalBillingModal from './components/DigitalBillingModal';
+import { HerokuNativeDashboard } from './components/HerokuNativeDashboard';
+import WarningsManager from './components/WarningsManager';
+import LoadingScreen from './components/LoadingScreen';
 
 const viewTitles: Record<View, string> = {
-    'DASHBOARD': 'Dashboard',
+    'DASHBOARD': 'Início',
     'CLIENTES': 'Clientes',
     'COBRANCAS': 'Cobranças',
     'DESPESAS': 'Despesas',
     'ROTAS': 'Rotas',
     'RELATORIOS': 'Relatórios',
     'CONFIGURACOES': 'Configurações',
+    'INDUSTRIAL': 'Modo Industrial',
+    'MAQUINAS': 'PIX MONTANHA',
 };
 
 const generatePrintableHtml = (title: string, content: string): string => {
@@ -135,6 +142,7 @@ const App: React.FC = () => {
     const [billings, setBillings] = useState<Billing[]>([]);
     const [expenses, setExpenses] = useState<Expense[]>([]);
     const [debtPayments, setDebtPayments] = useState<DebtPayment[]>([]);
+    const [debtPaymentsState, setDebtPaymentsState] = useState<DebtPayment[]>([]); // Added to track locally if needed, but the effect uses setDebtPayments
     const [warnings, setWarnings] = useState<Warning[]>([]);
     const [routes, setRoutes] = useState<Route[]>([]);
     const [deletedCustomersLog, setDeletedCustomersLog] = useState<{ customer: Customer, deletedAt: Date }[]>([]);
@@ -153,31 +161,26 @@ const App: React.FC = () => {
 
     // Sync & Offline State
     const [isOnline, setIsOnline] = useState(navigator.onLine);
-    const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'synced' | 'offline'>('idle');
-    const isSyncing = useRef(false);
-    const [pendingSyncCount, setPendingSyncCount] = useState(0);
-    const [lastSyncedCount, setLastSyncedCount] = useState(0);
-
-    const checkPendingCount = useCallback(async () => {
-        try {
-            const count = await getPendingMutationsCount();
-            setPendingSyncCount(count);
-        } catch (e) {
-            console.error(e);
-        }
-    }, []);
+    const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'synced' | 'offline' | 'pending'>('idle');
+    const [hasPendingChanges, setHasPendingChanges] = useState(false);
 
     useEffect(() => {
-        checkPendingCount();
-        const handleMutationQueued = () => checkPendingCount();
-        const handleQueueCleared = () => setPendingSyncCount(0);
-        window.addEventListener('offline-mutation-queued', handleMutationQueued);
-        window.addEventListener('offline-queue-cleared', handleQueueCleared);
+        const handleOffline = () => {
+            setIsOnline(false);
+            setSyncStatus('offline');
+        };
+        const handleOnline = () => {
+            setIsOnline(true);
+            setSyncStatus('synced');
+            setTimeout(() => setSyncStatus('idle'), 3000);
+        };
+        window.addEventListener('offline', handleOffline);
+        window.addEventListener('online', handleOnline);
         return () => {
-            window.removeEventListener('offline-mutation-queued', handleMutationQueued);
-            window.removeEventListener('offline-queue-cleared', handleQueueCleared);
-        }
-    }, [checkPendingCount]);
+            window.removeEventListener('offline', handleOffline);
+            window.removeEventListener('online', handleOnline);
+        };
+    }, []);
     
     // Theme and PWA states
     const [theme, setThemeState] = useState<Theme>(() => (localStorage.getItem('theme') as Theme) || 'dark');
@@ -207,6 +210,18 @@ const App: React.FC = () => {
     const [pendingPaymentActionModalState, setPendingPaymentActionModalState] = useState<{ isOpen: boolean; customer: Customer | null; pendingBilling: Billing | null; }>({ isOpen: false, customer: null, pendingBilling: null });
     const [isRouteCreationModalOpen, setIsRouteCreationModalOpen] = useState(false);
     const [printableCustomerSheet, setPrintableCustomerSheet] = useState<Customer | null>(null);
+
+    // Industrial Mode State
+    const [isIndustrialMode, setIsIndustrialMode] = useState(() => localStorage.getItem('industrialMode') === 'true');
+    useEffect(() => {
+        localStorage.setItem('industrialMode', isIndustrialMode.toString());
+    }, [isIndustrialMode]);
+
+    // Digital Billing Modal State
+    const [digitalBillingModalState, setDigitalBillingModalState] = useState<{ isOpen: boolean; customer: Customer | null }>({ isOpen: false, customer: null });
+
+    // Heroku Dashboard State
+    const [herokuDashboardState, setHerokuDashboardState] = useState<{ isOpen: boolean; herokuId: string; machineName: string; customerMpStoreId?: string }>({ isOpen: false, herokuId: '', machineName: '' });
 
     // Saving state for UI feedback
     const [isSaving, setIsSaving] = useState(false);
@@ -285,18 +300,37 @@ const App: React.FC = () => {
         showNotification("Pressione 'voltar' novamente para sair.", 'success');
 
         history.pushState(null, '', location.href);
-
-        setTimeout(() => {
-          backButtonPressedOnce.current = false;
-        }, 2000);
+        setTimeout(() => { backButtonPressedOnce.current = false; }, 2000);
       };
-
       window.addEventListener('popstate', handleBackButton);
-
-      return () => {
-        window.removeEventListener('popstate', handleBackButton);
-      };
+      return () => window.removeEventListener('popstate', handleBackButton);
     }, [currentView, showNotification]);
+
+    useEffect(() => {
+        const path = window.location.pathname;
+        if (path === '/dashboard-maquinas' || path === '/maquinas') setCurrentView('MAQUINAS');
+    }, []);
+
+    useEffect(() => {
+        // Fallback: If industrial mode is off but we are stuck on INDUSTRIAL view, return to Dashboard
+        const savedIndustrial = localStorage.getItem('industrialMode') === 'true';
+        if (!savedIndustrial && currentView === 'INDUSTRIAL') {
+            setCurrentView('DASHBOARD');
+            localStorage.setItem('lastActiveView', 'DASHBOARD');
+        }
+    }, [currentView]);
+
+    useEffect(() => {
+        // Check for specific views that might need platform-specific handling or just allow them all for refining
+        // Removed the isAndroid restriction for INDUSTRIAL and MAQUINAS as requested for web refining
+        
+        localStorage.setItem('lastActiveView', currentView);
+        if (!isIndustrialMode) {
+            const path = currentView === 'MAQUINAS' ? '/dashboard-maquinas' : 
+                         currentView === 'DASHBOARD' ? '/' : `/${currentView.toLowerCase()}`;
+            window.history.replaceState({}, '', path);
+        }
+    }, [currentView, isIndustrialMode]);
 
     const handleUpdateUserProfile = useCallback(async (updates: Partial<UserProfile>) => {
         if (!user) return;
@@ -378,57 +412,27 @@ const App: React.FC = () => {
     }, [openPinModal, handleRemovePin]);
 
     // --- Offline & Sync Logic ---
-    const syncData = useCallback(async () => {
-        if (!isOnline || isSyncing.current) return;
-    
-        isSyncing.current = true;
-        setSyncStatus('syncing');
-        
-        try {
-            const processedCount = await processSyncQueue(user?.uid || null);
-            if (processedCount > 0) {
-                setLastSyncedCount(processedCount);
-                showNotification(`${processedCount} ação(ões) offline foram sincronizadas!`, 'success');
-            }
-            setSyncStatus('synced');
-            setTimeout(() => {
-                setSyncStatus('idle');
-                isSyncing.current = false;
-            }, 2000);
-        } catch (error) {
-            console.error("Sync failed:", error);
-            showNotification('Falha na sincronização dos dados offline.', 'error');
-            setSyncStatus('idle');
-            isSyncing.current = false;
-        }
-    }, [isOnline, user, showNotification]);
-
     useEffect(() => {
         const handleOnline = () => {
             setIsOnline(true);
-            showNotification('Conexão reestabelecida. Sincronizando...', 'success');
-            syncData();
+            setSyncStatus('synced');
+            setTimeout(() => setSyncStatus('idle'), 3000);
         };
         const handleOffline = () => {
             setIsOnline(false);
             setSyncStatus('offline');
-            showNotification('Você está offline. As alterações serão salvas localmente.', 'success');
         };
 
         window.addEventListener('online', handleOnline);
         window.addEventListener('offline', handleOffline);
 
-        if (isOnline) {
-            syncData();
-        } else {
-            setSyncStatus('offline');
-        }
+        if (!isOnline) setSyncStatus('offline');
 
         return () => {
             window.removeEventListener('online', handleOnline);
             window.removeEventListener('offline', handleOffline);
         };
-    }, [isOnline, syncData, showNotification]);
+    }, [isOnline]);
 
     // --- Native Network Monitoring ---
     useEffect(() => {
@@ -438,18 +442,15 @@ const App: React.FC = () => {
             if (Capacitor.isNativePlatform()) {
                 const status = await Network.getStatus();
                 setIsOnline(status.connected);
-                if (!status.connected) {
-                    setSyncStatus('offline');
-                }
+                if (!status.connected) setSyncStatus('offline');
 
                 handler = await Network.addListener('networkStatusChange', status => {
                     setIsOnline(status.connected);
                     if (status.connected) {
-                        showNotification('Conexão reestabelecida. Sincronizando...', 'success');
-                        syncData();
+                        setSyncStatus('synced');
+                        setTimeout(() => setSyncStatus('idle'), 3000);
                     } else {
                         setSyncStatus('offline');
-                        showNotification('Você está offline. As alterações serão salvas localmente.', 'success');
                     }
                 });
             }
@@ -457,11 +458,9 @@ const App: React.FC = () => {
 
         setupNetwork();
         return () => {
-            if (handler) {
-                handler.remove();
-            }
+            if (handler) handler.remove();
         };
-    }, [syncData, showNotification]);
+    }, []);
 
     // --- Firebase Auth & Data Sync Effects ---
     const handleLoginSuccess = useCallback((email: string, password?: string, rememberMe?: boolean) => {
@@ -603,12 +602,21 @@ const App: React.FC = () => {
             warnings: setWarnings,
             routes: setRoutes,
         };
-    
+        const pendingWrites = new Set<string>();
+
         const unsubscribers = collections.map(col => {
             const q = query(collection(db, `users/${user.uid}/${col}`));
-            return onSnapshot(q, (querySnapshot) => {
+            return onSnapshot(q, { includeMetadataChanges: true }, (querySnapshot) => {
                 const data = querySnapshot.docs.map(processFirestoreDoc);
                 setters[col](data as any);
+                
+                // Track pending writes globally for the sync indicator
+                if (querySnapshot.metadata.hasPendingWrites) {
+                    pendingWrites.add(col);
+                } else {
+                    pendingWrites.delete(col);
+                }
+                setHasPendingChanges(pendingWrites.size > 0);
             }, (error) => {
                 console.error(`Error fetching ${col}:`, error);
                 showNotification(`Erro ao buscar dados de ${col}.`, 'error');
@@ -642,15 +650,31 @@ const App: React.FC = () => {
         setCustomers(prev => [...prev, customerWithId].sort((a,b) => a.name.localeCompare(b.name)));
     
         try {
-            const { id, ...payload } = customerWithId;
-            const firestorePayload = processPayloadForFirestore(payload);
-            if(isOnline) {
-                await setDoc(doc(db, `users/${user.uid}/customers`, id), firestorePayload);
-            } else {
-                await queueMutation({ action: 'add', collectionPath: 'customers', payload: customerWithId });
+            let latitude = customerData.latitude ?? 0;
+            let longitude = customerData.longitude ?? 0;
+            
+            if (!latitude && !longitude) {
+                try {
+                    const position = await Promise.race<any>([
+                        Geolocation.getCurrentPosition({ enableHighAccuracy: true, timeout: 3000 }),
+                        new Promise((_, reject) => setTimeout(() => reject(new Error('GPS Timeout')), 3000))
+                    ]);
+                    latitude = position.coords.latitude;
+                    longitude = position.coords.longitude;
+                } catch (e) {
+                    console.warn("Could not get GPS coordinates:", e);
+                }
             }
+
+            const customerWithCoords = { ...customerWithId, latitude, longitude };
+            const { id, ...payload } = customerWithCoords;
+            const firestorePayload = processPayloadForFirestore(payload);
+            
+            setDoc(doc(db, `users/${user.uid}/customers`, id), firestorePayload).catch(e => console.error('bg sync err:', e));
+            
             playSuccessSound();
-            setActionFeedbackState({ isOpen: true, variant: 'success', message: 'Cliente Adicionado!' });
+            const msg = isOnline ? 'Cliente Adicionado!' : 'CLIENTE SALVO OFFLINE! 💾';
+            setActionFeedbackState({ isOpen: true, variant: 'success', message: msg });
         } catch (error) {
             showNotification('Erro ao adicionar cliente. Alteração desfeita.', 'error');
             setCustomers(originalCustomers);
@@ -678,13 +702,11 @@ const App: React.FC = () => {
 
         try {
             const firestorePayload = processPayloadForFirestore(payload);
-            if (isOnline) {
-                await updateDoc(doc(db, `users/${user.uid}/customers`, id), firestorePayload);
-            } else {
-                await queueMutation({ action: 'update', collectionPath: 'customers', docId: id, payload });
-            }
+            updateDoc(doc(db, `users/${user.uid}/customers`, id), firestorePayload).catch(e => console.error('bg sync err:', e));
+            
             playSuccessSound();
-            setActionFeedbackState({ isOpen: true, variant: 'edit', message: 'Cliente Atualizado!' });
+            const msg = isOnline ? 'Cliente Atualizado!' : 'ATUALIZADO OFFLINE! 💾';
+            setActionFeedbackState({ isOpen: true, variant: 'edit', message: msg });
         } catch (error) {
             showNotification('Erro ao atualizar cliente.', 'error');
             setCustomers(originalCustomers);
@@ -709,13 +731,11 @@ const App: React.FC = () => {
         setDeleteModalState({ isOpen: false, customer: null });
     
         try {
-            if(isOnline) {
-                await deleteDoc(doc(db, `users/${user.uid}/customers`, customerToDelete.id));
-            } else {
-                await queueMutation({ action: 'delete', collectionPath: 'customers', docId: customerToDelete.id, payload: {} });
-            }
+            deleteDoc(doc(db, `users/${user.uid}/customers`, customerToDelete.id)).catch(e => console.error('bg sync err:', e));
+            
             playSuccessSound();
-            setActionFeedbackState({ isOpen: true, variant: 'delete', message: 'Cliente Excluído!' });
+            const msg = isOnline ? 'Cliente Excluído!' : 'EXCLUÍDO OFFLINE! 💾';
+            setActionFeedbackState({ isOpen: true, variant: 'delete', message: msg });
         } catch (error) {
             showNotification('Erro ao excluir cliente. Alteração desfeita.', 'error');
             setCustomers(originalCustomers);
@@ -744,11 +764,12 @@ const App: React.FC = () => {
         );
         
         const debtToAdd = billing.paymentMethod === 'pending_payment' ? 0 : (billing.valorDebitoNegativo || 0);
+        const debtPaid = billing.valorDividaPaga || 0;
 
         const updatedCustomerData = {
             equipment: updatedEquipment,
             lastVisitedAt: new Date(),
-            debtAmount: (customerToUpdate.debtAmount || 0) + debtToAdd
+            debtAmount: (customerToUpdate.debtAmount || 0) + debtToAdd - debtPaid
         };
         const updatedCustomer = { ...customerToUpdate, ...updatedCustomerData };
     
@@ -763,21 +784,34 @@ const App: React.FC = () => {
             const firestoreBillingPayload = processPayloadForFirestore(billingPayload);
             const firestoreCustomerPayload = processPayloadForFirestore(customerPayload);
 
-            if (isOnline) {
-                const batch = writeBatch(db);
-                batch.set(doc(db, `users/${user.uid}/billings`, billingId), firestoreBillingPayload);
-                batch.update(doc(db, `users/${user.uid}/customers`, customerId), firestoreCustomerPayload);
-                await batch.commit();
-            } else {
-                await queueMutation({ action: 'add', collectionPath: 'billings', payload: billing });
-                await queueMutation({ action: 'update', collectionPath: 'customers', docId: customerId, payload: customerPayload });
+            const batch = writeBatch(db);
+            batch.set(doc(db, `users/${user.uid}/billings`, billingId), firestoreBillingPayload);
+            batch.update(doc(db, `users/${user.uid}/customers`, customerId), firestoreCustomerPayload);
+
+            if (debtPaid > 0) {
+                const debtPaymentId = uuidv4();
+                const debtPayment: DebtPayment = {
+                    id: debtPaymentId,
+                    customerId: billing.customerId,
+                    customerName: billing.customerName,
+                    amountPaid: debtPaid,
+                    paidAt: new Date(),
+                    paymentMethod: billing.paymentMethod === 'debito_negativo' ? 'dinheiro' : (billing.paymentMethod as any), // Fallback if necessary
+                    equipmentType: billing.equipmentType
+                };
+                const { id: dId, ...debtPayload } = debtPayment;
+                batch.set(doc(db, `users/${user.uid}/debtPayments`, dId), processPayloadForFirestore(debtPayload));
             }
+
+            batch.commit().catch(e => console.error('bg sync err:', e));
             
             if (billing.paymentMethod !== 'pending_payment') {
                 playSuccessSound();
-                setActionFeedbackState({ isOpen: true, variant: 'success', message: 'Cobrança Realizada!', onEnd: () => setReceiptActionsModalState({ isOpen: true, billing, isProvisional: false }) });
+                const msg = isOnline ? 'Cobrança Realizada!' : 'COBRANÇA SALVA OFFLINE! 💾';
+                setActionFeedbackState({ isOpen: true, variant: 'success', message: msg, onEnd: () => setReceiptActionsModalState({ isOpen: true, billing, isProvisional: false }) });
             } else {
-                setActionFeedbackState({ isOpen: true, variant: 'pending', message: 'Pagamento Pendente' });
+                const msg = isOnline ? 'Pagamento Pendente' : 'PENDENTE SALVO OFFLINE! 💾';
+                setActionFeedbackState({ isOpen: true, variant: 'pending', message: msg });
             }
         } catch (error) {
             showNotification('Erro ao salvar COBRANÇA. Alterações desfeitas.', 'error');
@@ -837,19 +871,15 @@ const App: React.FC = () => {
                 nextBillingPayload = payload;
             }
 
-            if (isOnline) {
-                const batch = writeBatch(db);
-                batch.update(doc(db, `users/${user.uid}/billings`, billingId), processPayloadForFirestore(billingPayload));
-                batch.update(doc(db, `users/${user.uid}/customers`, customerId), processPayloadForFirestore(customerPayload));
-                if (nextBillingId && nextBillingPayload) batch.update(doc(db, `users/${user.uid}/billings`, nextBillingId), processPayloadForFirestore(nextBillingPayload));
-                await batch.commit();
-            } else {
-                await queueMutation({ action: 'update', collectionPath: 'billings', docId: billingId, payload: billingPayload });
-                await queueMutation({ action: 'update', collectionPath: 'customers', docId: customerId, payload: customerPayload });
-                if (nextBillingId && nextBillingPayload) await queueMutation({ action: 'update', collectionPath: 'billings', docId: nextBillingId, payload: nextBillingPayload });
-            }
+            const batch = writeBatch(db);
+            batch.update(doc(db, `users/${user.uid}/billings`, billingId), processPayloadForFirestore(billingPayload));
+            batch.update(doc(db, `users/${user.uid}/customers`, customerId), processPayloadForFirestore(customerPayload));
+            if (nextBillingId && nextBillingPayload) batch.update(doc(db, `users/${user.uid}/billings`, nextBillingId), processPayloadForFirestore(nextBillingPayload));
+            batch.commit().catch(e => console.error('bg sync err:', e));
+
             playSuccessSound();
-            setActionFeedbackState({ isOpen: true, variant: 'edit', message: 'Cobrança Atualizada!' });
+            const msg = isOnline ? 'Cobrança Atualizada!' : 'ATUALIZADO OFFLINE! 💾';
+            setActionFeedbackState({ isOpen: true, variant: 'edit', message: msg });
         } catch (error) {
             showNotification('Erro ao atualizar cobrança.', 'error');
             setBillings(originalBillings);
@@ -873,8 +903,9 @@ const App: React.FC = () => {
         
         const restoredRelogioAnterior = billingToDelete.relogioAnterior;
         const debtToRemove = billingToDelete.valorDebitoNegativo || 0;
+        const debtToRestore = billingToDelete.valorDividaPaga || 0;
         const updatedCustomerPayload = { 
-            debtAmount: (customerToUpdate.debtAmount || 0) - debtToRemove, 
+            debtAmount: (customerToUpdate.debtAmount || 0) - debtToRemove + debtToRestore, 
             equipment: customerToUpdate.equipment.map(e => e.id === billingToDelete.equipmentId ? { ...e, relogioAnterior: restoredRelogioAnterior } : e) 
         };
         const updatedCustomer = { ...customerToUpdate, ...updatedCustomerPayload };
@@ -883,17 +914,14 @@ const App: React.FC = () => {
         setCustomers(prev => prev.map(c => c.id === updatedCustomer.id ? updatedCustomer : c));
         
         try {
-            if (isOnline) {
-                const batch = writeBatch(db);
-                batch.delete(doc(db, `users/${user.uid}/billings`, billingId));
-                batch.update(doc(db, `users/${user.uid}/customers`, updatedCustomer.id), processPayloadForFirestore(updatedCustomerPayload));
-                await batch.commit();
-            } else {
-                await queueMutation({ action: 'delete', collectionPath: 'billings', docId: billingId, payload: {} });
-                await queueMutation({ action: 'update', collectionPath: 'customers', docId: updatedCustomer.id, payload: updatedCustomerPayload });
-            }
+            const batch = writeBatch(db);
+            batch.delete(doc(db, `users/${user.uid}/billings`, billingId));
+            batch.update(doc(db, `users/${user.uid}/customers`, updatedCustomer.id), processPayloadForFirestore(updatedCustomerPayload));
+            batch.commit().catch(e => console.error('bg sync err:', e));
+
             playSuccessSound();
-            setActionFeedbackState({ isOpen: true, variant: 'delete', message: 'Cobrança Excluída!' });
+            const msg = isOnline ? 'Cobrança Excluída!' : 'EXCLUÍDO OFFLINE! 💾';
+            setActionFeedbackState({ isOpen: true, variant: 'delete', message: msg });
         } catch (error) {
             showNotification('Erro ao excluir cobrança. As alterações foram desfeitas.', 'error');
             setBillings(originalBillings);
@@ -903,6 +931,52 @@ const App: React.FC = () => {
             setIsSaving(false);
         }
     }, [billings, customers, isOnline, user, showNotification]);
+
+    const handleDeleteDebtPayment = useCallback(async (paymentId: string) => {
+        if (!user) return;
+        setIsSaving(true);
+        const originalDebtPayments = debtPayments;
+        const originalCustomers = customers;
+
+        const paymentToDelete = debtPayments.find(p => p.id === paymentId);
+        if (!paymentToDelete) {
+            setIsSaving(false);
+            return;
+        }
+
+        const customerToUpdate = customers.find(c => c.id === paymentToDelete.customerId);
+        if (!customerToUpdate) {
+            setIsSaving(false);
+            return;
+        }
+
+        const restoredDebtAmount = (customerToUpdate.debtAmount || 0) + paymentToDelete.amountPaid;
+        const updatedCustomer = { ...customerToUpdate, debtAmount: restoredDebtAmount };
+
+        setDebtPayments(prev => prev.filter(p => p.id !== paymentId));
+        setCustomers(prev => prev.map(c => c.id === customerToUpdate.id ? updatedCustomer : c));
+
+        try {
+            const batch = writeBatch(db);
+            batch.delete(doc(db, `users/${user.uid}/debtPayments`, paymentId));
+            
+            const customerUpdatePayload = { debtAmount: restoredDebtAmount };
+            batch.update(doc(db, `users/${user.uid}/customers`, customerToUpdate.id), processPayloadForFirestore(customerUpdatePayload));
+            
+            await batch.commit();
+
+            playSuccessSound();
+            const msg = isOnline ? 'Pagamento de Dívida Excluído!' : 'EXCLUÍDO OFFLINE! 💾';
+            setActionFeedbackState({ isOpen: true, variant: 'delete', message: msg });
+        } catch (error) {
+            showNotification('Erro ao excluir pagamento de dívida.', 'error');
+            setDebtPayments(originalDebtPayments);
+            setCustomers(originalCustomers);
+            console.error(error);
+        } finally {
+            setIsSaving(false);
+        }
+    }, [debtPayments, customers, isOnline, user, showNotification]);
 
     const handleAddExpense = useCallback(async (description: string, amount: number, category: Expense['category']) => {
         if (!user) return;
@@ -921,13 +995,11 @@ const App: React.FC = () => {
         try {
             const { id, ...payload } = newExpense;
             const firestorePayload = processPayloadForFirestore(payload);
-            if(isOnline) {
-                await setDoc(doc(db, `users/${user.uid}/expenses`, id), firestorePayload);
-            } else {
-                await queueMutation({ action: 'add', collectionPath: 'expenses', payload: newExpense });
-            }
+            setDoc(doc(db, `users/${user.uid}/expenses`, id), firestorePayload).catch(e => console.error('bg sync err:', e));
+
             playSuccessSound();
-            setActionFeedbackState({ isOpen: true, variant: 'success', message: 'Despesa Adicionada!' });
+            const msg = isOnline ? 'Despesa Adicionada!' : 'DESPESA SALVA OFFLINE! 💾';
+            setActionFeedbackState({ isOpen: true, variant: 'success', message: msg });
         } catch (error) {
             showNotification('Erro ao adicionar despesa.', 'error');
             setExpenses(originalExpenses);
@@ -944,11 +1016,7 @@ const App: React.FC = () => {
         setExpenses(prev => prev.filter(e => e.id !== expenseId));
 
         try {
-            if(isOnline) {
-                await deleteDoc(doc(db, `users/${user.uid}/expenses`, expenseId));
-            } else {
-                await queueMutation({ action: 'delete', collectionPath: 'expenses', docId: expenseId, payload: {} });
-            }
+            deleteDoc(doc(db, `users/${user.uid}/expenses`, expenseId)).catch(e => console.error('bg sync err:', e));
             playSuccessSound();
             setActionFeedbackState({ isOpen: true, variant: 'delete', message: 'Despesa Excluída!' });
         } catch (error) {
@@ -960,27 +1028,36 @@ const App: React.FC = () => {
         }
     }, [expenses, isOnline, user, showNotification]);
 
-    const handleAddDebtPayment = useCallback(async (customerId: string, details: { amountPaidDinheiro: number; amountPaidPix: number } | { amountToAdd: number }) => {
+    const handleAddDebtPayment = useCallback(async (customerId: string, details: { amountPaidDinheiro: number; amountPaidPix: number; equipmentType: 'mesa' | 'jukebox' | 'grua' } | { amountToAdd: number }) => {
         if (!user) return;
         setIsSaving(true);
         const originalCustomers = customers;
         const customerToUpdate = customers.find(c => c.id === customerId);
-        if (!customerToUpdate) return;
+        if (!customerToUpdate) {
+            setIsSaving(false);
+            return;
+        }
 
         let updatedCustomer: Customer;
         let debtPayment: DebtPayment | null = null;
         let isPayingDebt = false;
 
         if ('amountToAdd' in details) { // Adding debt
-            const newDebtAmount = customerToUpdate.debtAmount + details.amountToAdd;
+            const newDebtAmount = (customerToUpdate.debtAmount || 0) + details.amountToAdd;
             updatedCustomer = { ...customerToUpdate, debtAmount: newDebtAmount };
         } else { // Paying debt
             isPayingDebt = true;
-            const { amountPaidDinheiro, amountPaidPix } = details;
+            const { amountPaidDinheiro, amountPaidPix, equipmentType } = details;
             const totalPaid = amountPaidDinheiro + amountPaidPix;
             
-            const newDebtAmount = Math.max(0, customerToUpdate.debtAmount - totalPaid);
-            updatedCustomer = { ...customerToUpdate, debtAmount: newDebtAmount };
+            const currentDebt = customerToUpdate.debtAmount || 0;
+            const newDebtAmount = Math.max(0, currentDebt - totalPaid);
+            
+            updatedCustomer = { 
+                ...customerToUpdate, 
+                debtAmount: newDebtAmount,
+                lastVisitedAt: new Date() // Mark as visited when paying debt
+            };
 
             const methodsUsed: ('dinheiro' | 'pix')[] = [];
             if (amountPaidDinheiro > 0) methodsUsed.push('dinheiro');
@@ -989,40 +1066,50 @@ const App: React.FC = () => {
             let paymentMethod: DebtPayment['paymentMethod'] = methodsUsed.length > 1 ? 'misto' : (methodsUsed[0] || 'dinheiro');
 
             debtPayment = {
-                id: uuidv4(), customerId, customerName: customerToUpdate.name, amountPaid: totalPaid, paidAt: new Date(), paymentMethod,
-                amountPaidDinheiro: amountPaidDinheiro > 0 ? amountPaidDinheiro : undefined,
-                amountPaidPix: amountPaidPix > 0 ? amountPaidPix : undefined,
+                id: uuidv4(), 
+                customerId, 
+                customerName: customerToUpdate.name, 
+                amountPaid: totalPaid, 
+                paidAt: new Date(), 
+                paymentMethod,
+                amountPaidDinheiro: amountPaidDinheiro || 0,
+                amountPaidPix: amountPaidPix || 0,
+                equipmentType: equipmentType!
             };
         }
         
+        // Optimistic UI updates
         setCustomers(prev => prev.map(c => c.id === customerId ? updatedCustomer : c));
         if (debtPayment) setDebtPayments(prev => [...prev, debtPayment!]);
         setDebtPaymentModalState({isOpen: false, customer: null});
 
         try {
-            const customerPayload = { debtAmount: updatedCustomer.debtAmount };
-            if (isOnline) {
-                const batch = writeBatch(db);
-                batch.update(doc(db, `users/${user.uid}/customers`, updatedCustomer.id), customerPayload);
-                if (debtPayment) {
-                    const { id: dpId, ...dpPayload } = debtPayment;
-                    const firestoreDpPayload = processPayloadForFirestore(dpPayload);
-                    batch.set(doc(db, `users/${user.uid}/debtPayments`, dpId), firestoreDpPayload);
-                }
-                await batch.commit();
-            } else {
-                await queueMutation({ action: 'update', collectionPath: 'customers', docId: updatedCustomer.id, payload: customerPayload });
-                if (debtPayment) {
-                    await queueMutation({ action: 'add', collectionPath: 'debtPayments', payload: debtPayment });
-                }
+            const batch = writeBatch(db);
+            
+            // Only update necessary fields for customer
+            const customerUpdatePayload = { 
+                debtAmount: updatedCustomer.debtAmount,
+                lastVisitedAt: updatedCustomer.lastVisitedAt
+            };
+            
+            const firestoreCustomerPayload = processPayloadForFirestore(customerUpdatePayload);
+            batch.update(doc(db, `users/${user.uid}/customers`, customerId), firestoreCustomerPayload);
+            
+            if (debtPayment) {
+                const { id: dpId, ...dpPayload } = debtPayment;
+                const firestoreDpPayload = processPayloadForFirestore(dpPayload);
+                batch.set(doc(db, `users/${user.uid}/debtPayments`, dpId), firestoreDpPayload);
             }
             
+            await batch.commit();
+            
+            playSuccessSound();
             if (isPayingDebt && debtPayment) {
-                playSuccessSound();
-                setActionFeedbackState({ isOpen: true, variant: 'success', message: 'Pagamento Recebido!', onEnd: () => setDebtReceiptActionsModalState({ isOpen: true, debtPayment, customer: updatedCustomer }) });
+                const msg = isOnline ? 'Pagamento Recebido!' : 'RECEBIDO OFFLINE! 💾';
+                setActionFeedbackState({ isOpen: true, variant: 'success', message: msg, onEnd: () => setDebtReceiptActionsModalState({ isOpen: true, debtPayment, customer: updatedCustomer }) });
             } else {
-                playSuccessSound();
-                setActionFeedbackState({ isOpen: true, variant: 'edit', message: 'Dívida Adicionada!' });
+                const msg = isOnline ? 'Dívida Adicionada!' : 'SALVO OFFLINE! 💾';
+                setActionFeedbackState({ isOpen: true, variant: 'edit', message: msg });
             }
         } catch (error) {
             showNotification('Erro ao processar dívida.', 'error');
@@ -1046,13 +1133,11 @@ const App: React.FC = () => {
 
         try {
             const payload = { debtAmount: 0 };
-            if (isOnline) {
-                await updateDoc(doc(db, `users/${user.uid}/customers`, customer.id), payload);
-            } else {
-                await queueMutation({ action: 'update', collectionPath: 'customers', docId: customer.id, payload });
-            }
+            updateDoc(doc(db, `users/${user.uid}/customers`, customer.id), payload).catch(e => console.error('bg sync err:', e));
+
             playSuccessSound();
-            setActionFeedbackState({ isOpen: true, variant: 'delete', message: 'Dívida Perdoada!' });
+            const msg = isOnline ? 'Dívida Perdoada!' : 'PERDOADA OFFLINE! 💾';
+            setActionFeedbackState({ isOpen: true, variant: 'delete', message: msg });
         } catch (error) {
             setCustomers(originalCustomers);
             showNotification('Erro ao perdoar dívida.', 'error');
@@ -1068,20 +1153,18 @@ const App: React.FC = () => {
         const customer = customers.find(c => c.id === customerId);
         if (!customer) return;
 
-        const newWarning: Warning = { id: uuidv4(), customerId, customerName: customer.name, message, createdAt: new Date(), isResolved: false };
+        const newWarning: Warning = { id: uuidv4(), customerId, customerName: customer.name, message, level: 'medium', createdAt: new Date(), isResolved: false };
         const originalWarnings = warnings;
         setWarnings(prev => [newWarning, ...prev]);
 
         try {
             const { id, ...payload } = newWarning;
             const firestorePayload = processPayloadForFirestore(payload);
-            if (isOnline) {
-                await setDoc(doc(db, `users/${user.uid}/warnings`, id), firestorePayload);
-            } else {
-                await queueMutation({ action: 'add', collectionPath: 'warnings', payload: newWarning });
-            }
+            setDoc(doc(db, `users/${user.uid}/warnings`, id), firestorePayload).catch(e => console.error('bg sync err:', e));
+            
             playSuccessSound();
-            setActionFeedbackState({ isOpen: true, variant: 'success', message: 'Aviso Adicionado!' });
+            const msg = isOnline ? 'Aviso Adicionado!' : 'AVISO SALVO OFFLINE! 💾';
+            setActionFeedbackState({ isOpen: true, variant: 'success', message: msg });
         } catch (error) {
             setWarnings(originalWarnings);
             showNotification("Erro ao adicionar aviso.", "error");
@@ -1095,14 +1178,12 @@ const App: React.FC = () => {
         setWarnings(prev => prev.map(w => w.id === warningId ? { ...w, isResolved: true } : w));
 
         try {
-            const payload = { isResolved: true };
-            if (isOnline) {
-                await updateDoc(doc(db, `users/${user.uid}/warnings`, warningId), payload);
-            } else {
-                await queueMutation({ action: 'update', collectionPath: 'warnings', docId: warningId, payload });
-            }
+            const payload = { isResolved: true, resolvedAt: new Date() };
+            updateDoc(doc(db, `users/${user.uid}/warnings`, warningId), payload).catch(e => console.error('bg sync err:', e));
+            
             playSuccessSound();
-            setActionFeedbackState({ isOpen: true, variant: 'edit', message: 'Aviso Resolvido!' });
+            const msg = isOnline ? 'Aviso Resolvido!' : 'RESOLVIDO OFFLINE! 💾';
+            setActionFeedbackState({ isOpen: true, variant: 'edit', message: msg });
         } catch (error) {
             setWarnings(originalWarnings);
             showNotification("Erro ao resolver aviso.", "error");
@@ -1116,19 +1197,86 @@ const App: React.FC = () => {
         setWarnings(prev => prev.filter(w => w.id !== warningId));
         
         try {
-            if (isOnline) {
-                await deleteDoc(doc(db, `users/${user.uid}/warnings`, warningId));
-            } else {
-                await queueMutation({ action: 'delete', collectionPath: 'warnings', docId: warningId, payload: {} });
-            }
+            await deleteDoc(doc(db, `users/${user.uid}/warnings`, warningId));
+            
             playSuccessSound();
-            setActionFeedbackState({ isOpen: true, variant: 'delete', message: 'Aviso Excluído!' });
+            const msg = isOnline ? 'Aviso Excluído!' : 'AVISO EXCLUÍDO OFFLINE! 💾';
+            setActionFeedbackState({ isOpen: true, variant: 'delete', message: msg });
         } catch (error) {
             setWarnings(originalWarnings);
             showNotification("Erro ao excluir aviso.", "error");
             console.error(error);
         }
     }, [warnings, isOnline, user, showNotification]);
+
+    // --- GPS Tracking (Real-time position sharing to Firestore) ---
+    useEffect(() => {
+        if (!user || !userProfile) return;
+        const nickname = (userProfile as any).nickname || (userProfile as any).displayName;
+        if (!nickname) return;
+
+        const deviceDocRef = doc(db, 'shared_active_devices', user.uid);
+        const appTrackerOwnerUid = user.uid;
+        let watchId: number | null = null;
+
+        const sendPosition = async (lat: number, lng: number) => {
+            const storedOwner = localStorage.getItem('appTrackerOwnerUid');
+            if (storedOwner && storedOwner !== appTrackerOwnerUid) return;
+            try {
+                localStorage.setItem('appTrackerOwnerUid', appTrackerOwnerUid);
+                await setDoc(deviceDocRef, {
+                    uid: user.uid,
+                    nickname,
+                    lat,
+                    lng,
+                    updatedAt: Timestamp.now(),
+                    isActive: true,
+                }, { merge: true });
+            } catch (e) {
+                console.warn('GPS share error:', e);
+            }
+        };
+
+        if (navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition(
+                pos => sendPosition(pos.coords.latitude, pos.coords.longitude),
+                err => console.warn('GPS initial fix error:', err),
+                { enableHighAccuracy: true, timeout: 15000 }
+            );
+            watchId = navigator.geolocation.watchPosition(
+                pos => sendPosition(pos.coords.latitude, pos.coords.longitude),
+                err => console.warn('GPS watch error:', err),
+                { enableHighAccuracy: true, maximumAge: 30000, timeout: 30000 }
+            );
+        }
+
+        return () => {
+            if (watchId !== null) navigator.geolocation.clearWatch(watchId);
+            setDoc(deviceDocRef, { isActive: false, updatedAt: Timestamp.now() }, { merge: true }).catch(() => {});
+            localStorage.removeItem('appTrackerOwnerUid');
+        };
+    }, [user, userProfile]);
+
+    // --- Digital Billing Modal ---
+    const handleOpenDigitalBilling = useCallback((customer: Customer) => {
+        setDigitalBillingModalState({ isOpen: true, customer });
+    }, []);
+
+    // --- Heroku Dashboard ---
+    const handleOpenEsp32Dashboard = useCallback((herokuId: string, machineName: string, customerMpStoreId?: string) => {
+        setHerokuDashboardState({ isOpen: true, herokuId, machineName, customerMpStoreId });
+    }, []);
+
+    // --- Industrial Mode Toggle ---
+    const handleToggleIndustrialMode = useCallback((enabled: boolean) => {
+        setIsIndustrialMode(enabled);
+        localStorage.setItem('industrialMode', enabled ? 'true' : 'false');
+        if (enabled) {
+            setView('INDUSTRIAL');
+        } else {
+            setView('DASHBOARD');
+        }
+    }, []);
 
     const handleFinalizePendingPayment = useCallback(async (updatedBilling: Billing) => {
         if (!user) return;
@@ -1140,6 +1288,7 @@ const App: React.FC = () => {
         if (!customerToUpdate) return;
 
         const debtToAdd = updatedBilling.valorDebitoNegativo || 0;
+        const debtPaid = updatedBilling.valorDividaPaga || 0;
         
         const updatedCustomerEquipment = customerToUpdate.equipment.map(eq => {
             if (eq.id === updatedBilling.equipmentId) {
@@ -1152,7 +1301,7 @@ const App: React.FC = () => {
 
         const updatedCustomer = { 
             ...customerToUpdate, 
-            debtAmount: (customerToUpdate.debtAmount || 0) + debtToAdd,
+            debtAmount: (customerToUpdate.debtAmount || 0) + debtToAdd - debtPaid,
             equipment: updatedCustomerEquipment 
         };
 
@@ -1167,18 +1316,30 @@ const App: React.FC = () => {
             const firestoreBillingPayload = processPayloadForFirestore(billingPayload);
             const firestoreCustomerPayload = processPayloadForFirestore(customerPayload);
 
-            if (isOnline) {
-                const batch = writeBatch(db);
-                batch.update(doc(db, `users/${user.uid}/billings`, billingId), firestoreBillingPayload);
-                batch.update(doc(db, `users/${user.uid}/customers`, customerId), firestoreCustomerPayload);
-                await batch.commit();
-            } else {
-                await queueMutation({ action: 'update', collectionPath: 'billings', docId: billingId, payload: billingPayload });
-                await queueMutation({ action: 'update', collectionPath: 'customers', docId: customerId, payload: customerPayload });
+            const batch = writeBatch(db);
+            batch.update(doc(db, `users/${user.uid}/billings`, billingId), firestoreBillingPayload);
+            batch.update(doc(db, `users/${user.uid}/customers`, customerId), firestoreCustomerPayload);
+
+            if (debtPaid > 0) {
+                const debtPaymentId = uuidv4();
+                const debtPayment: DebtPayment = {
+                    id: debtPaymentId,
+                    customerId: updatedBilling.customerId,
+                    customerName: updatedBilling.customerName,
+                    amountPaid: debtPaid,
+                    paidAt: new Date(),
+                    paymentMethod: updatedBilling.paymentMethod === 'debito_negativo' ? 'dinheiro' : (updatedBilling.paymentMethod as any),
+                    equipmentType: updatedBilling.equipmentType
+                };
+                const { id: dId, ...debtPayload } = debtPayment;
+                batch.set(doc(db, `users/${user.uid}/debtPayments`, dId), processPayloadForFirestore(debtPayload));
             }
+
+            await batch.commit();
             
             playSuccessSound();
-            setActionFeedbackState({ isOpen: true, variant: 'success', message: 'Pagamento Finalizado!', onEnd: () => setReceiptActionsModalState({ isOpen: true, billing: updatedBilling, isProvisional: false }) });
+            const msg = isOnline ? 'Pagamento Finalizado!' : 'FINALIZADO OFFLINE! 💾';
+            setActionFeedbackState({ isOpen: true, variant: 'success', message: msg, onEnd: () => setReceiptActionsModalState({ isOpen: true, billing: updatedBilling, isProvisional: false }) });
         } catch (error) {
             showNotification('Erro ao finalizar pagamento.', 'error');
             setBillings(originalBillings);
@@ -1233,14 +1394,11 @@ const App: React.FC = () => {
             const { id, ...payload } = newRoute;
             const firestorePayload = processPayloadForFirestore(payload);
             
-            if (isOnline) {
-                await setDoc(doc(db, `users/${user.uid}/routes`, id), firestorePayload);
-            } else {
-                await queueMutation({ action: 'add', collectionPath: 'routes', payload: newRoute });
-            }
+            await setDoc(doc(db, `users/${user.uid}/routes`, id), firestorePayload);
             
             playSuccessSound();
-            setActionFeedbackState({ isOpen: true, variant: 'success', message: 'Rota Salva!' });
+            const msg = isOnline ? 'Rota Salva!' : 'ROTA SALVA OFFLINE! 💾';
+            setActionFeedbackState({ isOpen: true, variant: 'success', message: msg });
     
         } catch (error: any) {
             console.error("Error creating route:", error);
@@ -1263,13 +1421,11 @@ const App: React.FC = () => {
         setRoutes(prev => prev.filter(r => r.id !== routeId));
         
         try {
-            if (isOnline) {
-                await deleteDoc(doc(db, `users/${user.uid}/routes`, routeId));
-            } else {
-                await queueMutation({ action: 'delete', collectionPath: 'routes', docId: routeId, payload: {} });
-            }
+            await deleteDoc(doc(db, `users/${user.uid}/routes`, routeId));
+            
             playSuccessSound();
-            setActionFeedbackState({ isOpen: true, variant: 'delete', message: 'Rota Excluída!' });
+            const msg = isOnline ? 'Rota Excluída!' : 'EXCLUÍDA OFFLINE! 💾';
+            setActionFeedbackState({ isOpen: true, variant: 'delete', message: msg });
         } catch (error) {
             console.error("Error deleting route:", error);
             showNotification("Erro ao excluir a rota.", "error");
@@ -1412,9 +1568,7 @@ const App: React.FC = () => {
             debtPayments,
             warnings,
             routes,
-            userProfile: {
-                pixKeys: userProfile?.pixKeys
-            }
+            userProfile
         };
         const jsonString = JSON.stringify(dataToExport, null, 2);
         const blob = new Blob([jsonString], { type: 'application/json' });
@@ -1430,6 +1584,7 @@ const App: React.FC = () => {
         setLastBackupTimestamp(backupTimestamp);
         showNotification('Backup exportado com sucesso!', 'success');
     }, [customers, billings, expenses, debtPayments, warnings, routes, userProfile, showNotification]);
+
 
     const handleMergeData = useCallback(async (file: File) => {
         if (!user) {
@@ -1470,7 +1625,6 @@ const App: React.FC = () => {
                 }
 
                 await batch.commit();
-                await clearOfflineQueue();
 
                 showNotification('Dados mesclados com sucesso! A página será recarregada.', 'success');
                 setTimeout(() => window.location.reload(), 2000);
@@ -1510,7 +1664,6 @@ const App: React.FC = () => {
             batch.update(userDocRef, { pixKeys: [] });
     
             await batch.commit();
-            await clearOfflineQueue();
             playSuccessSound();
             setActionFeedbackState({ isOpen: true, variant: 'delete', message: 'Todos os Dados Apagados' });
         } catch (error) {
@@ -1540,11 +1693,13 @@ const App: React.FC = () => {
     }, [showNotification]);
 
     const handleShareReceipt = useCallback(async (receiptData: Billing | DebtPayment) => {
-        const isBilling = 'equipmentType' in receiptData;
+        const isBilling = 'settledAt' in receiptData;
         const text = isBilling
             ? generateBillingText(receiptData as Billing, false)
             : generateDebtText(receiptData as DebtPayment);
-        const title = isBilling ? `Comprovante - ${receiptData.customerName}` : `Pagamento - ${receiptData.customerName}`;
+            
+        const customerName = 'customerName' in receiptData ? receiptData.customerName : 'Cliente';
+        const title = isBilling ? `Comprovante - ${customerName}` : `Pagamento - ${customerName}`;
         await shareText(text, title);
     }, [shareText]);
 
@@ -1580,18 +1735,18 @@ const App: React.FC = () => {
                 color: { dark: '#000000', light: '#FFFFFF' }
             });
 
-            if ('type' in receiptData && receiptData.type === 'debt-statement') {
-                title = `Demonstrativo - ${receiptData.customer.name}`;
-                SheetComponent = <DebtStatementSheet customer={receiptData.customer} qrCodeDataUrl={qrCodeDataUrl} pixKeyName={pixKeyName} />
-            } else if ('equipmentType' in receiptData) {
-                const billing = receiptData as Billing;
-                title = `Comprovante - ${billing.customerName}`;
-                SheetComponent = <ReceiptSheet billing={billing} qrCodeDataUrl={qrCodeDataUrl} pixKeyName={pixKeyName} />;
-            } else {
-                const debtPayment = receiptData as DebtPayment;
-                title = `Pagamento - ${debtPayment.customerName}`;
-                SheetComponent = <DebtReceiptSheet debtPayment={debtPayment} qrCodeDataUrl={qrCodeDataUrl} pixKeyName={pixKeyName} />;
-            }
+        if ('type' in receiptData && receiptData.type === 'debt-statement') {
+            title = `Demonstrativo - ${(receiptData as any).customer.name}`;
+            SheetComponent = <DebtStatementSheet customer={(receiptData as any).customer} qrCodeDataUrl={qrCodeDataUrl} pixKeyName={pixKeyName} />
+        } else if ('settledAt' in receiptData) {
+            const billing = receiptData as Billing;
+            title = `Comprovante - ${billing.customerName}`;
+            SheetComponent = <ReceiptSheet billing={billing} qrCodeDataUrl={qrCodeDataUrl} pixKeyName={pixKeyName} />;
+        } else {
+            const debtPayment = receiptData as DebtPayment;
+            title = `Recibo de Dívida - ${debtPayment.customerName}`;
+            SheetComponent = <DebtReceiptSheet debtPayment={debtPayment} qrCodeDataUrl={qrCodeDataUrl} pixKeyName={pixKeyName} />;
+        }
             
             const content = ReactDOMServer.renderToString(SheetComponent);
             const printableHtml = generatePrintableHtml(title, content);
@@ -1623,7 +1778,7 @@ const App: React.FC = () => {
     }, [finalizePaymentModalState.billing, customers]);
 
     if (isLoadingAuth) {
-        return <div className="bg-slate-900 text-white min-h-screen flex items-center justify-center">Carregando...</div>;
+        return <LoadingScreen />;
     }
 
     if (!user) {
@@ -1631,40 +1786,102 @@ const App: React.FC = () => {
     }
 
     const renderActiveView = () => {
+        if (isIndustrialMode) {
+            return <IndustrialView 
+                        customers={customers} 
+                        billings={billings} 
+                        debtPayments={debtPayments}
+                        warnings={warnings} 
+                        onStartBilling={handleOpenBillingModal} 
+                        onFinalizeBilling={(billing) => setFinalizePaymentModalState({ isOpen: true, billing })} 
+                        onViewBilling={(item) => {
+                            if ('relogioAnterior' in item) {
+                                setReceiptActionsModalState({ isOpen: true, billing: item as Billing, isProvisional: false });
+                            } else {
+                                setDebtReceiptActionsModalState({ isOpen: true, debtPayment: item as DebtPayment, customer: customers.find(c => c.id === item.customerId) || null });
+                            }
+                        }} 
+                        onDeleteBilling={(item) => {
+                            if ('relogioAnterior' in item) {
+                                handleDeleteBilling(item.id);
+                            } else {
+                                handleDeleteDebtPayment(item.id);
+                            }
+                        }} 
+                        onPayDebtCustomer={handleOpenDebtPaymentModal} 
+                        onOpenDigitalBilling={handleOpenDigitalBilling} 
+                        onOpenEsp32Dashboard={(id, name, storeId) => setHerokuDashboardState({ isOpen: true, herokuId: id, machineName: name, customerMpStoreId: storeId })} 
+                        onResolveWarning={handleResolveWarning} 
+                        onPrintDebtStatement={(customer) => handlePrintPdfReceipt({ type: 'debt-statement', customer })} 
+                    />;
+        }
+
         switch (currentView) {
-            case 'DASHBOARD': return <DashboardView billings={billings} expenses={expenses} customers={customers} debtPayments={debtPayments} warnings={warnings} onAddWarning={handleAddWarning} onResolveWarning={handleResolveWarning} onDeleteWarning={handleDeleteWarning} lastBackupDate={lastBackupTimestamp} onExportData={handleExportData} onNavigateToSettings={() => setView('CONFIGURACOES')} areValuesHidden={areValuesHidden} deletedCustomersLog={deletedCustomersLog} />;
-            case 'CLIENTES': return <ClientesView customers={customers} warnings={warnings} billings={billings} routes={routes} onAddCustomer={handleAddCustomer} onUpdateCustomer={handleUpdateCustomerPartial} isSaving={isSaving} showNotification={showNotification} onFichaActions={handleOpenFichaActionsModal} onBillCustomer={handleOpenBillingModal} onEditCustomer={handleOpenEditCustomerModal} onDeleteCustomer={handleOpenDeleteModal} onPayDebtCustomer={handleOpenDebtPaymentModal} onOpenFastBilling={() => setIsFastBillingModalOpen(true)} onLocationActions={handleOpenLocationActions} onWhatsAppActions={handleWhatsAppActions} onFinalizePendingPayment={(billing) => setFinalizePaymentModalState({ isOpen: true, billing })} areValuesHidden={areValuesHidden} onPendingPaymentAction={(customer, billing) => setPendingPaymentActionModalState({ isOpen: true, customer, pendingBilling: billing })} onOpenRouteCreator={() => setIsRouteCreationModalOpen(true)} onSaveRoute={handleSaveRoute} onDeleteRoute={handleDeleteRoute} />;
-            case 'COBRANCAS': return <CobrancasView billings={billings} customers={customers} debtPayments={debtPayments} onShowActions={(billing) => setReceiptActionsModalState({ isOpen: true, billing, isProvisional: false })} onEditBilling={handleOpenEditBillingModal} onDeleteBilling={handleDeleteBilling} onFinalizePayment={(billing) => setFinalizePaymentModalState({ isOpen: true, billing })} onPayDebtCustomer={handleOpenDebtPaymentModal} onPrintDebtStatement={(customer) => handlePrintPdfReceipt({ type: 'debt-statement', customer })} areValuesHidden={areValuesHidden} />;
+            case 'DASHBOARD': return <DashboardView billings={billings} expenses={expenses} customers={customers} debtPayments={debtPayments} warnings={warnings} onAddWarning={handleAddWarning} onResolveWarning={handleResolveWarning} onDeleteWarning={handleDeleteWarning} lastBackupDate={lastBackupTimestamp} onExportData={handleExportData} onNavigateToSettings={() => setView('CONFIGURACOES')} areValuesHidden={areValuesHidden} deletedCustomersLog={deletedCustomersLog} mercadoPagoToken={userProfile?.mercadoPagoToken} onOpenEsp32Dashboard={handleOpenEsp32Dashboard} />;
+            case 'CLIENTES': return <ClientesView customers={customers} warnings={warnings} billings={billings} routes={routes} onAddCustomer={handleAddCustomer} onUpdateCustomer={handleUpdateCustomerPartial} isSaving={isSaving} showNotification={showNotification} onFichaActions={handleOpenFichaActionsModal} onBillCustomer={handleOpenBillingModal} onEditCustomer={handleOpenEditCustomerModal} onDeleteCustomer={handleOpenDeleteModal} onPayDebtCustomer={handleOpenDebtPaymentModal} onOpenFastBilling={() => setIsFastBillingModalOpen(true)} onLocationActions={handleOpenLocationActions} onWhatsAppActions={handleWhatsAppActions} onFinalizePendingPayment={(billing) => setFinalizePaymentModalState({ isOpen: true, billing })} areValuesHidden={areValuesHidden} onPendingPaymentAction={(customer, billing) => setPendingPaymentActionModalState({ isOpen: true, customer, pendingBilling: billing })} onOpenRouteCreator={() => setIsRouteCreationModalOpen(true)} onSaveRoute={handleSaveRoute} onDeleteRoute={handleDeleteRoute} onOpenDigitalBilling={handleOpenDigitalBilling} onOpenEsp32Dashboard={handleOpenEsp32Dashboard} />;
+            case 'COBRANCAS': return <CobrancasView 
+                billings={billings} 
+                customers={customers} 
+                debtPayments={debtPayments} 
+                onShowActions={(billing) => setReceiptActionsModalState({ isOpen: true, billing, isProvisional: false })} 
+                onEditBilling={handleOpenEditBillingModal} 
+                onDeleteBilling={(item: any) => {
+                    if ('relogioAnterior' in item) {
+                        handleDeleteBilling(item.id);
+                    } else {
+                        handleDeleteDebtPayment(item.id);
+                    }
+                }} 
+                onFinalizePayment={(billing) => setFinalizePaymentModalState({ isOpen: true, billing })} 
+                onPayDebtCustomer={handleOpenDebtPaymentModal} 
+                onPrintDebtStatement={(customer) => handlePrintPdfReceipt({ type: 'debt-statement', customer })} 
+                areValuesHidden={areValuesHidden} 
+            />;
             case 'DESPESAS': return <DespesasView expenses={expenses} onAddExpense={handleAddExpense} onDeleteExpense={handleDeleteExpense} areValuesHidden={areValuesHidden} />;
-            case 'ROTAS': return <RotasView customers={customers} />;
+            case 'ROTAS': return <RotasView customers={customers} warnings={warnings} />;
             case 'RELATORIOS': return <RelatoriosView customers={customers} billings={billings} expenses={expenses} debtPayments={debtPayments} areValuesHidden={areValuesHidden} showNotification={showNotification} />;
-            case 'CONFIGURACOES': return <ConfiguracoesView userProfile={userProfile} onUpdateUserProfile={handleUpdateUserProfile} onExportData={handleExportData} onMergeData={handleMergeData} theme={theme} setTheme={setTheme} showNotification={showNotification} deferredPrompt={deferredPrompt} onInstallPrompt={handleInstallPrompt} onDeleteAllData={() => setIsDeleteAllDataModalOpen(true)} onLogout={handleLogout} onSwitchAccount={handleSwitchAccount} onAddNewAccount={handleAddNewAccount} isPrivacyModeEnabled={isPrivacyModeEnabled} onActivatePrivacyMode={handleActivatePrivacyMode} onDeactivatePrivacyMode={handleDeactivatePrivacyMode} />;
-            default: return <DashboardView billings={billings} expenses={expenses} customers={customers} debtPayments={debtPayments} warnings={warnings} onAddWarning={handleAddWarning} onResolveWarning={handleResolveWarning} onDeleteWarning={handleDeleteWarning} lastBackupDate={lastBackupTimestamp} onExportData={handleExportData} onNavigateToSettings={() => setView('CONFIGURACOES')} areValuesHidden={areValuesHidden} deletedCustomersLog={deletedCustomersLog} />;
+            case 'CONFIGURACOES': return <ConfiguracoesView userProfile={userProfile} onUpdateUserProfile={handleUpdateUserProfile} onExportData={handleExportData} onMergeData={handleMergeData} theme={theme} setTheme={setTheme} showNotification={showNotification} deferredPrompt={deferredPrompt} onInstallPrompt={handleInstallPrompt} onDeleteAllData={() => setIsDeleteAllDataModalOpen(true)} onLogout={handleLogout} onSwitchAccount={handleSwitchAccount} onAddNewAccount={handleAddNewAccount} isPrivacyModeEnabled={isPrivacyModeEnabled} onActivatePrivacyMode={handleActivatePrivacyMode} onDeactivatePrivacyMode={handleDeactivatePrivacyMode} isIndustrialMode={isIndustrialMode} onToggleIndustrialMode={handleToggleIndustrialMode} />;
+            case 'MAQUINAS': return (
+                <div className="flex-1 flex flex-col h-full bg-slate-900 overflow-hidden">
+                    <HerokuNativeDashboard 
+                        isOpen={true} 
+                        onClose={() => setCurrentView('DASHBOARD')} 
+                        herokuId={""} 
+                        machineName={"PAINEL GERAL PIX MONTANHA"} 
+                        customerMpStoreId={userProfile?.mercadoPagoStoreId || ""}
+                        mercadoPagoToken={userProfile?.mercadoPagoToken}
+                    />
+                </div>
+            );
+            default: return <DashboardView billings={billings} expenses={expenses} customers={customers} debtPayments={debtPayments} warnings={warnings} onAddWarning={handleAddWarning} onResolveWarning={handleResolveWarning} onDeleteWarning={handleDeleteWarning} lastBackupDate={lastBackupTimestamp} onExportData={handleExportData} onNavigateToSettings={() => setView('CONFIGURACOES')} areValuesHidden={areValuesHidden} deletedCustomersLog={deletedCustomersLog} mercadoPagoToken={userProfile?.mercadoPagoToken} onOpenEsp32Dashboard={handleOpenEsp32Dashboard} />;
         }
     };
 
     return (
-        <div className="flex h-full w-full overflow-hidden">
-            <Sidebar user={user} currentView={currentView} setView={setView} isOpen={isSidebarOpen} setIsOpen={setIsSidebarOpen} onOpenFastBilling={() => setIsFastBillingModalOpen(true)} />
+        <div className={`flex h-full w-full overflow-hidden ${isIndustrialMode ? 'bg-black' : ''}`}>
+            {!isIndustrialMode && <Sidebar user={user} currentView={currentView} setView={setView} isOpen={isSidebarOpen} setIsOpen={setIsSidebarOpen} onOpenFastBilling={() => setIsFastBillingModalOpen(true)} />}
             <div className="flex-1 flex flex-col h-full min-w-0">
-                 <MobileHeader 
-                    title={viewTitles[currentView]} 
-                    onMenuClick={() => setIsSidebarOpen(true)} 
-                    deferredPrompt={deferredPrompt} 
-                    onInstallPrompt={handleInstallPrompt} 
-                    isPrivacyModeEnabled={isPrivacyModeEnabled} 
-                    isPrivacyUnlocked={isPrivacyUnlocked} 
-                    onToggleLock={handleToggleLock}
-                 />
-                <main className="flex-1 overflow-y-auto overflow-x-hidden p-4 md:p-8 bg-slate-100 dark:bg-slate-900 pb-24 md:pb-8 pt-24 md:pt-8 w-full">
+                 {!isIndustrialMode && (
+                    <MobileHeader 
+                        title={viewTitles[currentView]} 
+                        onMenuClick={() => setIsSidebarOpen(true)} 
+                        deferredPrompt={deferredPrompt} 
+                        onInstallPrompt={handleInstallPrompt} 
+                        isPrivacyModeEnabled={isPrivacyModeEnabled} 
+                        isPrivacyUnlocked={isPrivacyUnlocked} 
+                        onToggleLock={handleToggleLock}
+                    />
+                 )}
+                <main className={`flex-1 overflow-y-auto overflow-x-hidden ${isIndustrialMode ? 'p-0' : 'p-4 md:p-8 bg-slate-100 dark:bg-slate-900 pb-24 md:pb-8 pt-24 md:pt-8 w-full'}`}>
                     {renderActiveView()}
                 </main>
             </div>
             
-            <BottomNavBar currentView={currentView} setView={setView} />
+            {!isIndustrialMode && <BottomNavBar currentView={currentView} setView={setView} />}
             {isInstallBannerVisible && deferredPrompt && <InstallPwaBanner onInstall={handleInstallPrompt} onDismiss={() => setIsInstallBannerVisible(false)} />}
             
-            <SyncStatusIndicator status={syncStatus} onSync={syncData} count={pendingSyncCount} lastSyncedCount={lastSyncedCount} />
+            <SyncStatusIndicator status={syncStatus} hasPendingChanges={hasPendingChanges} />
+
 
             {/* All Modals & Overlays */}
             {billingModalState.isOpen && billingModalState.customer && billingModalState.equipment && <BillingModal isOpen={billingModalState.isOpen} onClose={() => setBillingModalState({ isOpen: false, customer: null, equipment: null })} onConfirm={handleAddBilling} customer={billingModalState.customer} equipment={billingModalState.equipment} onTriggerProvisionalReceiptAction={handleTriggerProvisionalReceiptAction} />}
@@ -1700,7 +1917,15 @@ const App: React.FC = () => {
                 />
             )}
             {isDeleteAllDataModalOpen && <ActionModal isOpen={isDeleteAllDataModalOpen} onClose={() => setIsDeleteAllDataModalOpen(false)} onConfirm={handleDeleteAllData} title="Apagar Todos os Dados" confirmText="Sim, Apagar Tudo"><p className="text-red-400">Esta ação é irreversível. Confirma que deseja apagar todos os dados da sua conta?</p></ActionModal>}
-            {finalizePaymentModalState.isOpen && finalizePaymentModalState.billing && <FinalizePaymentModal isOpen={finalizePaymentModalState.isOpen} onClose={() => setFinalizePaymentModalState({ isOpen: false, billing: null })} onConfirm={handleFinalizePendingPayment} billing={finalizePaymentModalState.billing} />}
+            {finalizePaymentModalState.isOpen && finalizePaymentModalState.billing && (
+                <FinalizePaymentModal 
+                    isOpen={finalizePaymentModalState.isOpen} 
+                    onClose={() => setFinalizePaymentModalState({ isOpen: false, billing: null })} 
+                    onConfirm={handleFinalizePendingPayment} 
+                    billing={finalizePaymentModalState.billing} 
+                    customerDebt={customers.find(c => c.id === finalizePaymentModalState.billing?.customerId)?.debtAmount || 0}
+                />
+            )}
             {forgiveDebtModalState.isOpen && forgiveDebtModalState.customer && <ActionModal isOpen={forgiveDebtModalState.isOpen} onClose={() => setForgiveDebtModalState({ isOpen: false, customer: null })} onConfirm={() => handleForgiveDebt(forgiveDebtModalState.customer!)} title="Perdoar Dívida" confirmText="Sim, Perdoar"><p>Tem certeza que deseja zerar a dívida de <strong>{forgiveDebtModalState.customer.name}</strong> no valor de <strong>R$ {forgiveDebtModalState.customer.debtAmount.toFixed(2)}</strong>?</p></ActionModal>}
             {pendingPaymentActionModalState.isOpen && (
                 <PendingPaymentActionModal
@@ -1724,6 +1949,26 @@ const App: React.FC = () => {
             {isRouteCreationModalOpen && <RouteCreationModal isOpen={isRouteCreationModalOpen} onClose={() => setIsRouteCreationModalOpen(false)} customers={customers} onConfirm={handleSaveRoute} isSaving={isSaving} />}
             {printableCustomerSheet && <PrintableCustomerSheetView customer={printableCustomerSheet} onCancel={() => setPrintableCustomerSheet(null)} showNotification={showNotification} />}
             {actionFeedbackState.isOpen && <ActionFeedbackOverlay isOpen={actionFeedbackState.isOpen} onEnd={handleAnimationEnd} variant={actionFeedbackState.variant} message={!isOnline && actionFeedbackState.message && !actionFeedbackState.message.toLowerCase().includes('offline') ? `${actionFeedbackState.message} (Offline)` : actionFeedbackState.message} />}
+
+            {/* Legacy & Hardware Modals */}
+            {digitalBillingModalState.isOpen && digitalBillingModalState.customer && (
+                <DigitalBillingModal 
+                    isOpen={digitalBillingModalState.isOpen} 
+                    onClose={() => setDigitalBillingModalState({ isOpen: false, customer: null })} 
+                    customer={digitalBillingModalState.customer} 
+                    mercadoPagoToken={userProfile?.mercadoPagoToken}
+                />
+            )}
+            {herokuDashboardState.isOpen && (
+                <HerokuNativeDashboard 
+                    isOpen={herokuDashboardState.isOpen}
+                    onClose={() => setHerokuDashboardState({ isOpen: false, herokuId: '', machineName: '' })}
+                    herokuId={herokuDashboardState.herokuId}
+                    machineName={herokuDashboardState.machineName}
+                    customerMpStoreId={herokuDashboardState.customerMpStoreId}
+                    mercadoPagoToken={userProfile?.mercadoPagoToken}
+                />
+            )}
         </div>
     );
 };

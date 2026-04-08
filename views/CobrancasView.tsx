@@ -1,5 +1,4 @@
-// views/CobrancasView.tsx
-import React, { useMemo, useState, useCallback } from 'react';
+import React, { useMemo, useState, useCallback, useEffect } from 'react';
 import { Billing, Customer, DebtPayment } from '../types';
 import PageHeader from '../components/PageHeader';
 import { SearchIcon } from '../components/icons/SearchIcon';
@@ -13,6 +12,8 @@ import ActionModal from '../components/ActionModal';
 import { CurrencyDollarIcon } from '../components/icons/CurrencyDollarIcon';
 import { ListBulletIcon } from '../components/icons/ListBulletIcon';
 import { nativePrintPDF } from '../utils/nativePrint';
+import { usePagination } from '../hooks/usePagination';
+import { InfiniteScrollTrigger } from '../components/InfiniteScrollTrigger';
 
 interface CobrancasViewProps {
     billings: Billing[];
@@ -20,7 +21,7 @@ interface CobrancasViewProps {
     debtPayments: DebtPayment[];
     onShowActions: (billing: Billing) => void;
     onEditBilling: (billing: Billing) => void;
-    onDeleteBilling: (billingId: string) => void;
+    onDeleteBilling: (billing: Billing | DebtPayment) => void;
     onFinalizePayment: (billing: Billing) => void;
     onPayDebtCustomer: (customer: Customer) => void;
     onPrintDebtStatement: (customer: Customer) => void;
@@ -81,6 +82,9 @@ interface BillingsListProps {
     renderSortArrow: (key: SortKey) => React.ReactNode;
     getNetBilledAmount: (billing: Billing) => number;
     areValuesHidden: boolean;
+    visibleItems: Billing[];
+    loadMore: () => void;
+    hasMore: boolean;
 }
 
 interface DebtorsListProps {
@@ -90,55 +94,68 @@ interface DebtorsListProps {
     onPayDebtCustomer: (customer: Customer) => void;
     onPrintDebtStatement: (customer: Customer) => void;
     areValuesHidden: boolean;
+    visibleItems: Customer[];
+    loadMore: () => void;
+    hasMore: boolean;
 }
 
 // --- Sub-components for each tab ---
 
-const BillingsList: React.FC<BillingsListProps> = ({ billings, onEdit, onDelete, onShowActions, totalBilled, handleSort, renderSortArrow, getNetBilledAmount, areValuesHidden }) => (
+const BillingsList: React.FC<BillingsListProps> = ({ 
+    billings, onEdit, onDelete, onShowActions, totalBilled, handleSort, renderSortArrow, getNetBilledAmount, areValuesHidden, visibleItems, loadMore, hasMore 
+}) => (
     <>
         {/* Mobile View: Cards */}
         <div className="md:hidden space-y-4 mb-10">
-            {billings.length > 0 ? billings.map((billing: Billing) => (
-                    <div key={billing.id} className="bg-white dark:bg-slate-800 p-4 rounded-lg shadow-md border border-slate-200 dark:border-slate-700">
+            {visibleItems.length > 0 ? visibleItems.map((item: any) => {
+                const isDebt = 'paidAt' in item;
+                const settledAt = isDebt ? item.paidAt : item.settledAt;
+                
+                return (
+                    <div key={item.id} className={`${isDebt ? 'bg-indigo-50/50 dark:bg-indigo-900/20 border-indigo-200 dark:border-indigo-800' : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700'} p-4 rounded-lg shadow-md border`}>
                         <div className="flex justify-between items-start">
-                            <div>
-                                <p className="font-bold text-slate-900 dark:text-white break-words">{billing.customerName}</p>
-                                <p className="text-sm text-slate-500 dark:text-slate-400">{new Date(billing.settledAt).toLocaleDateString('pt-BR')}</p>
-                            </div>
-                            <div className="text-right">
-                                <p className="font-mono font-bold text-lg text-lime-600 dark:text-lime-400">
-                                    {areValuesHidden ? 'R$ •••,••' : `R$ ${getNetBilledAmount(billing).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                            <div className="min-w-0 flex-grow">
+                                <p className="font-bold text-slate-900 dark:text-white break-words">
+                                    {isDebt && <span className="text-indigo-600 dark:text-indigo-400 mr-1 text-[10px] uppercase font-black">[DÍVIDA]</span>}
+                                    {item.customerName}
                                 </p>
-                                {billing.valorDebitoNegativo && billing.valorDebitoNegativo > 0 && (
+                                <p className="text-sm text-slate-500 dark:text-slate-400">{new Date(settledAt).toLocaleDateString('pt-BR')}</p>
+                            </div>
+                            <div className="text-right shrink-0">
+                                <p className={`${isDebt ? 'text-indigo-600 dark:text-indigo-400' : 'text-lime-600 dark:text-lime-400'} font-mono font-bold text-lg`}>
+                                    {areValuesHidden ? 'R$ •••,••' : `R$ ${(isDebt ? item.amountPaid : getNetBilledAmount(item)).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                                </p>
+                                {item.valorDebitoNegativo && item.valorDebitoNegativo > 0 && (
                                     <p className="font-mono text-sm text-red-500 dark:text-red-400">
-                                        Dívida: {areValuesHidden ? 'R$ •••,••' : `R$ ${billing.valorDebitoNegativo.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                                        Dívida: {areValuesHidden ? 'R$ •••,••' : `R$ ${item.valorDebitoNegativo.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
                                     </p>
                                 )}
-                                <div className="mt-1"><PaymentMethodDisplay method={billing.paymentMethod} /></div>
+                                <div className="mt-1"><PaymentMethodDisplay method={item.paymentMethod} /></div>
                             </div>
                         </div>
                         <div className="mt-3 pt-3 border-t border-slate-200 dark:border-slate-700 flex justify-between items-center">
                             <span className="flex items-center gap-2 text-sm">
-                                {billing.equipmentType === 'mesa' ? <BilliardIcon className="w-4 h-4 text-cyan-500 dark:text-cyan-400" /> : 
-                                 billing.equipmentType === 'jukebox' ? <JukeboxIcon className="w-4 h-4 text-fuchsia-500 dark:text-fuchsia-400" /> :
+                                {item.equipmentType === 'mesa' ? <BilliardIcon className="w-4 h-4 text-cyan-500 dark:text-cyan-400" /> : 
+                                 item.equipmentType === 'jukebox' ? <JukeboxIcon className="w-4 h-4 text-fuchsia-500 dark:text-fuchsia-400" /> :
                                  <CraneIcon className="w-4 h-4 text-orange-500 dark:text-orange-400" />}
                                 <span className="text-slate-600 dark:text-slate-300">
-                                    {billing.equipmentType === 'mesa' ? `Mesa ${billing.equipmentNumero}` : 
-                                     billing.equipmentType === 'jukebox' ? `Jukebox ${billing.equipmentNumero}` :
-                                     `Grua ${billing.equipmentNumero}`}
+                                    {item.equipmentType === 'mesa' ? `Mesa ${item.equipmentNumero || '(Rec. Dívida)'}` : 
+                                     item.equipmentType === 'jukebox' ? `Jukebox ${item.equipmentNumero || '(Rec. Dívida)'}` :
+                                     `Grua ${item.equipmentNumero || '(Rec. Dívida)'}`}
                                 </span>
                             </span>
                             <div className="flex gap-4">
-                                <button onClick={() => onShowActions(billing)} className="text-sm font-semibold text-indigo-600 dark:text-indigo-400">Ações</button>
-                                {billing.equipmentType === 'grua' && (
-                                    <button onClick={() => onEdit(billing)} className="p-1 text-sky-500 dark:text-sky-400" title='Editar Cobrança'><PencilIcon className="w-5 h-5" /></button>
+                                <button onClick={() => onShowActions(item)} className="text-sm font-semibold text-indigo-600 dark:text-indigo-400">Ações</button>
+                                {!isDebt && item.equipmentType === 'grua' && (
+                                    <button onClick={() => onEdit(item)} className="p-1 text-sky-500 dark:text-sky-400" title='Editar Cobrança'><PencilIcon className="w-5 h-5" /></button>
                                 )}
-                                <button onClick={() => onDelete(billing)} className="p-1 text-red-500 dark:text-red-400" title='Excluir Cobrança'><TrashIcon className="w-5 h-5" /></button>
+                                <button onClick={() => onDelete(item)} className="p-1 text-red-500 dark:text-red-400" title='Excluir'><TrashIcon className="w-5 h-5" /></button>
                             </div>
                         </div>
                     </div>
-                 )
-            ) : <p className="text-center py-16 text-slate-500 dark:text-slate-400 italic">Nenhuma cobrança encontrada.</p>}
+                );
+            }) : <p className="text-center py-16 text-slate-500 dark:text-slate-400 italic">Nenhuma cobrança encontrada.</p>}
+            <InfiniteScrollTrigger onIntersect={loadMore} hasMore={hasMore} />
         </div>
 
         {/* Desktop View: Table */}
@@ -156,47 +173,60 @@ const BillingsList: React.FC<BillingsListProps> = ({ billings, onEdit, onDelete,
                         </tr>
                     </thead>
                     <tbody>
-                        {billings.length > 0 ? billings.map((billing: Billing) => (
-                                <tr key={billing.id} className="bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700/50">
-                                    <td className="px-6 py-4">{new Date(billing.settledAt).toLocaleDateString('pt-BR')}</td>
-                                    <td className="px-6 py-4 font-medium text-slate-900 dark:text-white whitespace-nowrap">{billing.customerName}</td>
-                                    <td className="px-6 py-4">
-                                        <span className="flex items-center gap-2">
-                                            {billing.equipmentType === 'mesa' ? <BilliardIcon className="w-4 h-4 text-cyan-500 dark:text-cyan-400" /> : 
-                                             billing.equipmentType === 'jukebox' ? <JukeboxIcon className="w-4 h-4 text-fuchsia-500 dark:text-fuchsia-400" /> :
-                                             <CraneIcon className="w-4 h-4 text-orange-500 dark:text-orange-400" />}
-                                            {billing.equipmentType === 'mesa' ? `Mesa ${billing.equipmentNumero}` : 
-                                             billing.equipmentType === 'jukebox' ? `Jukebox ${billing.equipmentNumero}` :
-                                             `Grua ${billing.equipmentNumero}`}
-                                        </span>
-                                    </td>
-                                    <td className="px-6 py-4"><PaymentMethodDisplay method={billing.paymentMethod} /></td>
-                                    <td className="px-6 py-4 text-right font-mono font-bold">
-                                        <div className="flex flex-col items-end">
-                                            <span className="text-lime-600 dark:text-lime-400">
-                                                {areValuesHidden ? 'R$ •••,••' : `R$ ${getNetBilledAmount(billing).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                        {visibleItems.length > 0 ? visibleItems.map((item: any) => {
+                                const isDebt = 'paidAt' in item;
+                                const settledAt = isDebt ? item.paidAt : item.settledAt;
+                                
+                                return (
+                                    <tr key={item.id} className={`${isDebt ? 'bg-indigo-50/30 dark:bg-indigo-900/10' : 'bg-white dark:bg-slate-800'} border-b border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700/50`}>
+                                        <td className="px-6 py-4">{new Date(settledAt).toLocaleDateString('pt-BR')}</td>
+                                        <td className="px-6 py-4 font-medium text-slate-900 dark:text-white whitespace-nowrap">
+                                            {isDebt && <span className="text-indigo-500 dark:text-indigo-400 mr-2 text-[10px] font-black uppercase border border-indigo-400 dark:border-indigo-600 px-1 rounded">Dívida</span>}
+                                            {item.customerName}
+                                        </td>
+                                        <td className="px-6 py-4">
+                                            <span className="flex items-center gap-2">
+                                                {item.equipmentType === 'mesa' ? <BilliardIcon className="w-4 h-4 text-cyan-500 dark:text-cyan-400" /> : 
+                                                 item.equipmentType === 'jukebox' ? <JukeboxIcon className="w-4 h-4 text-fuchsia-500 dark:text-fuchsia-400" /> :
+                                                 <CraneIcon className="w-4 h-4 text-orange-500 dark:text-orange-400" />}
+                                                {item.equipmentType === 'mesa' ? `Mesa ${item.equipmentNumero || '(Rec. Dívida)'}` : 
+                                                 item.equipmentType === 'jukebox' ? `Jukebox ${item.equipmentNumero || '(Rec. Dívida)'}` :
+                                                 `Grua ${item.equipmentNumero || '(Rec. Dívida)'}`}
                                             </span>
-                                            {billing.valorDebitoNegativo && billing.valorDebitoNegativo > 0 && (
-                                                <span className="text-xs text-red-500 dark:text-red-400">
-                                                    (Dívida: {areValuesHidden ? 'R$ •••,••' : `R$ ${billing.valorDebitoNegativo.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`})
+                                        </td>
+                                        <td className="px-6 py-4"><PaymentMethodDisplay method={item.paymentMethod} /></td>
+                                        <td className="px-6 py-4 text-right font-mono font-bold">
+                                            <div className="flex flex-col items-end">
+                                                <span className={isDebt ? "text-indigo-600 dark:text-indigo-400" : "text-lime-600 dark:text-lime-400"}>
+                                                    {areValuesHidden ? 'R$ •••,••' : `R$ ${(isDebt ? item.amountPaid : getNetBilledAmount(item)).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
                                                 </span>
-                                            )}
-                                        </div>
-                                    </td>
-                                    <td className="px-6 py-4 text-center">
-                                        <div className="flex justify-center items-center gap-4">
-                                            <button onClick={() => onShowActions(billing)} className="text-slate-500 hover:text-indigo-500" title="Mais Ações">Ações</button>
-                                            {billing.equipmentType === 'grua' && (
-                                                <button onClick={() => onEdit(billing)} className="text-slate-500 hover:text-sky-500" title='Editar Cobrança'><PencilIcon className="w-5 h-5" /></button>
-                                            )}
-                                            <button onClick={() => onDelete(billing)} className="text-slate-500 hover:text-red-500" title='Excluir Cobrança'><TrashIcon className="w-5 h-5" /></button>
-                                        </div>
-                                    </td>
-                                </tr>
-                            )
+                                                {item.valorDebitoNegativo && item.valorDebitoNegativo > 0 && (
+                                                    <span className="text-xs text-red-500 dark:text-red-400">
+                                                        (Dívida: {areValuesHidden ? 'R$ •••,••' : `R$ ${item.valorDebitoNegativo.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`})
+                                                    </span>
+                                                )}
+                                            </div>
+                                        </td>
+                                        <td className="px-6 py-4 text-center">
+                                            <div className="flex justify-center items-center gap-4">
+                                                <button onClick={() => onShowActions(item)} className="text-slate-500 hover:text-indigo-500" title="Mais Ações">Ações</button>
+                                                {!isDebt && item.equipmentType === 'grua' && (
+                                                    <button onClick={() => onEdit(item)} className="text-slate-500 hover:text-sky-500" title='Editar Cobrança'><PencilIcon className="w-5 h-5" /></button>
+                                                )}
+                                                <button onClick={() => onDelete(item)} className="text-slate-500 hover:text-red-500" title='Excluir'><TrashIcon className="w-5 h-5" /></button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                );
+                            }
                         ) : (
                            <tr><td colSpan={6} className="text-center py-16 text-slate-500 dark:text-slate-400 italic">Nenhuma cobrança encontrada.</td></tr>
                         )}
+                        <tr>
+                            <td colSpan={6}>
+                                <InfiniteScrollTrigger onIntersect={loadMore} hasMore={hasMore} />
+                            </td>
+                        </tr>
                     </tbody>
                 </table>
             </div>
@@ -204,11 +234,11 @@ const BillingsList: React.FC<BillingsListProps> = ({ billings, onEdit, onDelete,
     </>
 );
 
-const DebtorsList: React.FC<DebtorsListProps> = ({ debtorCustomers, totalDebt, onPrint, onPayDebtCustomer, onPrintDebtStatement, areValuesHidden }) => (
+const DebtorsList: React.FC<DebtorsListProps> = ({ debtorCustomers, totalDebt, onPrint, onPayDebtCustomer, onPrintDebtStatement, areValuesHidden, visibleItems, loadMore, hasMore }) => (
     <>
         {/* Mobile View: Cards */}
         <div className="md:hidden grid grid-cols-1 sm:grid-cols-2 gap-4 mb-10">
-            {debtorCustomers.length > 0 ? debtorCustomers.map((customer: Customer) => (
+            {visibleItems.length > 0 ? visibleItems.map((customer: Customer) => (
                 <div key={customer.id} className="bg-white dark:bg-slate-800 p-4 rounded-lg shadow-md border border-slate-200 dark:border-slate-700 flex flex-col">
                     <div className="text-center flex-grow">
                         <p className="font-bold text-slate-900 dark:text-white truncate">{customer.name}</p>
@@ -238,6 +268,9 @@ const DebtorsList: React.FC<DebtorsListProps> = ({ debtorCustomers, totalDebt, o
                     <p className="text-slate-500 dark:text-slate-400 mt-2">Todos os clientes estão com os pagamentos em dia.</p>
                 </div>
             )}
+            <div className="col-span-1 sm:col-span-2">
+                <InfiniteScrollTrigger onIntersect={loadMore} hasMore={hasMore} />
+            </div>
         </div>
 
         {/* Desktop View: Table */}
@@ -260,7 +293,7 @@ const DebtorsList: React.FC<DebtorsListProps> = ({ debtorCustomers, totalDebt, o
                         </tr>
                     </thead>
                     <tbody>
-                        {debtorCustomers.length > 0 ? debtorCustomers.map((customer: Customer) => (
+                        {visibleItems.length > 0 ? visibleItems.map((customer: Customer) => (
                             <tr key={customer.id} className="bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700/50">
                                 <td className="px-6 py-4 font-medium text-slate-900 dark:text-white whitespace-nowrap">{customer.name}</td>
                                 <td className="px-6 py-4 text-slate-500 dark:text-slate-400">{customer.cidade}</td>
@@ -273,6 +306,11 @@ const DebtorsList: React.FC<DebtorsListProps> = ({ debtorCustomers, totalDebt, o
                                 </td>
                             </tr>
                         )) : (<tr><td colSpan={4} className="text-center py-16 text-slate-500 dark:text-slate-400 italic">Nenhum cliente com dívida pendente.</td></tr>)}
+                        <tr>
+                            <td colSpan={4}>
+                                <InfiniteScrollTrigger onIntersect={loadMore} hasMore={hasMore} />
+                            </td>
+                        </tr>
                     </tbody>
                     <tfoot className="bg-slate-100 dark:bg-slate-700/50 font-bold text-slate-900 dark:text-white">
                         <tr>
@@ -333,12 +371,18 @@ const CobrancasView: React.FC<CobrancasViewProps> = ({
     }, []);
 
     const filteredAndSortedData = useMemo(() => {
-        let items: Billing[] = [];
+        const combined = [
+            ...billings.map(b => ({ ...b, sortDate: new Date(b.settledAt).getTime() })),
+            ...debtPayments.map(dp => ({ ...dp, sortDate: new Date(dp.paidAt).getTime() }))
+        ];
+
+        let items = combined;
         if(activeTab === 'billings') {
-            items = billings.filter(billing => {
-                if (equipmentFilter !== 'all' && billing.equipmentType !== equipmentFilter) return false;
-                if (searchQuery && !billing.customerName.toLowerCase().includes(searchQuery.toLowerCase())) return false;
-                const itemDate = new Date(billing.settledAt);
+            items = combined.filter(item => {
+                if (equipmentFilter !== 'all' && item.equipmentType !== equipmentFilter) return false;
+                if (searchQuery && !item.customerName.toLowerCase().includes(searchQuery.toLowerCase())) return false;
+                
+                const itemDate = new Date(item.sortDate);
                 if (dateRange.start && new Date(dateRange.start + 'T00:00:00') > itemDate) return false;
                 if (dateRange.end && new Date(dateRange.end + 'T23:59:59') < itemDate) return false;
                 return true;
@@ -347,32 +391,65 @@ const CobrancasView: React.FC<CobrancasViewProps> = ({
     
         return items.sort((a, b) => {
             let valA: any, valB: any;
-            if ('settledAt' in a && 'settledAt' in b && sortKey === 'settledAt') {
-                valA = new Date(a.settledAt).getTime();
-                valB = new Date(b.settledAt).getTime();
+            
+            if (sortKey === 'settledAt' || sortKey === 'paidAt') {
+                valA = a.sortDate;
+                valB = b.sortDate;
+            } else if (sortKey === 'valorTotal' || sortKey === 'amountPaid') {
+                valA = 'amountPaid' in a ? a.amountPaid : ('valorTotal' in a ? a.valorTotal : 0);
+                valB = 'amountPaid' in b ? b.amountPaid : ('valorTotal' in b ? b.valorTotal : 0);
             } else {
                 valA = (a as any)[sortKey];
                 valB = (b as any)[sortKey];
             }
+
             if (valA < valB) return sortDirection === 'asc' ? -1 : 1;
             if (valA > valB) return sortDirection === 'asc' ? 1 : -1;
             return 0;
         });
-    }, [activeTab, billings, equipmentFilter, searchQuery, dateRange, sortKey, sortDirection]);
+    }, [activeTab, billings, debtPayments, equipmentFilter, searchQuery, dateRange, sortKey, sortDirection]);
 
     const { pendingBillings, completedBillings } = useMemo(() => {
-        const pending: Billing[] = [];
-        const completed: Billing[] = [];
-        filteredAndSortedData.forEach(b => {
-            if (b.paymentMethod === 'pending_payment') {
-                pending.push(b);
+        const pending: any[] = [];
+        const completed: any[] = [];
+        filteredAndSortedData.forEach(item => {
+            if ('paymentMethod' in item && item.paymentMethod === 'pending_payment') {
+                pending.push(item);
             } else {
-                completed.push(b);
+                completed.push(item);
             }
         });
         return { pendingBillings: pending, completedBillings: completed };
     }, [filteredAndSortedData]);
 
+    const { debtorCustomers, totalDebt } = useMemo(() => {
+        const debtors = customers.filter(c => c.debtAmount > 0).sort((a,b) => b.debtAmount - a.debtAmount);
+        const debt = customers.reduce((sum, c) => sum + c.debtAmount, 0);
+        return { debtorCustomers: debtors, totalDebt: debt };
+    }, [customers]);
+
+    const { 
+        slicedItems: completedBillingsSliced, 
+        loadMore: loadMoreBillings, 
+        hasMore: hasMoreBillings, 
+        reset: resetBillings 
+    } = usePagination(completedBillings, 15);
+
+    const { 
+        slicedItems: debtorCustomersSliced, 
+        loadMore: loadMoreDebtors, 
+        hasMore: hasMoreDebtors, 
+        reset: resetDebtors 
+    } = usePagination(debtorCustomers, 15);
+
+    // Reset pagination when searching or changing filters
+    useEffect(() => {
+        resetBillings();
+    }, [searchQuery, equipmentFilter, dateRange, resetBillings]);
+
+    useEffect(() => {
+        resetDebtors();
+    }, [searchQuery, resetDebtors]);
 
     const handleSort = useCallback((key: SortKey) => {
         if (sortKey === key) {
@@ -392,13 +469,14 @@ const CobrancasView: React.FC<CobrancasViewProps> = ({
       return (billing.valorPagoDinheiro || 0) + (billing.valorPagoPix || 0);
     }, []);
 
-    const totalBilled = useMemo(() => completedBillings.reduce((sum, b) => sum + getNetBilledAmount(b), 0), [completedBillings, getNetBilledAmount]);
-
-    const { debtorCustomers, totalDebt } = useMemo(() => {
-        const debtors = customers.filter(c => c.debtAmount > 0).sort((a,b) => b.debtAmount - a.debtAmount);
-        const debt = customers.reduce((sum, c) => sum + c.debtAmount, 0);
-        return { debtorCustomers: debtors, totalDebt: debt };
-    }, [customers]);
+    const totalBilled = useMemo(() => {
+        return completedBillings.reduce((sum, item) => {
+            if ('paidAt' in item) { // DebtPayment
+                return sum + item.amountPaid;
+            }
+            return sum + getNetBilledAmount(item);
+        }, 0);
+    }, [completedBillings, getNetBilledAmount]);
     
     const handlePrintDebtors = useCallback(async () => {
         const typeMap: Record<string, string> = { mesa: 'M. Sinuca', jukebox: 'Jukebox', grua: 'Grua' };
@@ -465,7 +543,7 @@ const CobrancasView: React.FC<CobrancasViewProps> = ({
 
     const handleConfirmDelete = () => {
         if (deletingBilling) {
-            onDeleteBilling(deletingBilling.id);
+            onDeleteBilling(deletingBilling);
             setDeletingBilling(null);
         }
     };
@@ -539,10 +617,25 @@ const CobrancasView: React.FC<CobrancasViewProps> = ({
             )}
 
 
-            {activeTab === 'billings' && <BillingsList billings={completedBillings} onEdit={onEditBilling} onDelete={setDeletingBilling} onShowActions={onShowActions} totalBilled={totalBilled} handleSort={handleSort} renderSortArrow={renderSortArrow} getNetBilledAmount={getNetBilledAmount} areValuesHidden={areValuesHidden} />}
-            {activeTab === 'debtors' && <DebtorsList debtorCustomers={debtorCustomers} totalDebt={totalDebt} onPrint={handlePrintDebtors} onPayDebtCustomer={onPayDebtCustomer} onPrintDebtStatement={onPrintDebtStatement} areValuesHidden={areValuesHidden} />}
+            {activeTab === 'billings' && <BillingsList billings={completedBillings} onEdit={onEditBilling} onDelete={setDeletingBilling} onShowActions={onShowActions} totalBilled={totalBilled} handleSort={handleSort} renderSortArrow={renderSortArrow} getNetBilledAmount={getNetBilledAmount} areValuesHidden={areValuesHidden} visibleItems={completedBillingsSliced} loadMore={loadMoreBillings} hasMore={hasMoreBillings} />}
+            {activeTab === 'debtors' && <DebtorsList debtorCustomers={debtorCustomers} totalDebt={totalDebt} onPrint={handlePrintDebtors} onPayDebtCustomer={onPayDebtCustomer} onPrintDebtStatement={onPrintDebtStatement} areValuesHidden={areValuesHidden} visibleItems={debtorCustomersSliced} loadMore={loadMoreDebtors} hasMore={hasMoreDebtors} />}
             
-            {deletingBilling && <ActionModal isOpen={!!deletingBilling} onClose={() => setDeletingBilling(null)} onConfirm={handleConfirmDelete} title="Confirmar Exclusão" confirmText="Sim, Excluir"><p>Tem certeza que deseja excluir esta cobrança para <strong>{deletingBilling.customerName}</strong> no valor de <strong>R$ {deletingBilling.valorTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>?</p><p className="mt-2 text-amber-500 dark:text-amber-300">Esta ação irá reverter a leitura do relógio do equipamento e, se aplicável, o valor da dívida do cliente.</p></ActionModal>}
+            {deletingBilling && (
+                <ActionModal 
+                    isOpen={!!deletingBilling} 
+                    onClose={() => setDeletingBilling(null)} 
+                    onConfirm={handleConfirmDelete} 
+                    title="Confirmar Exclusão" 
+                    confirmText="Sim, Excluir"
+                >
+                    <p>
+                        Tem certeza que deseja excluir esta {('paidAt' in deletingBilling) ? 'baixa de dívida' : 'cobrança'} para <strong>{deletingBilling.customerName}</strong> no valor de <strong>R$ {((deletingBilling as any).valorTotal ?? (deletingBilling as any).amountPaid ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>?
+                    </p>
+                    {(!('paidAt' in deletingBilling)) && (
+                        <p className="mt-2 text-amber-500 dark:text-amber-300">Esta ação irá reverter a leitura do relógio do equipamento e, se aplicável, o valor da dívida do cliente.</p>
+                    )}
+                </ActionModal>
+            )}
         </div>
     );
 };
