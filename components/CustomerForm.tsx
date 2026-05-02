@@ -38,7 +38,6 @@ const initialFormState = {
     equipment: [],
     latitude: null,
     longitude: null,
-    mercadoPagoStoreId: '',
 };
 
 const FormField: React.FC<{ 
@@ -148,6 +147,7 @@ const CustomerForm: React.FC<CustomerFormProps> = ({ customers, initialData, onS
   }, []);
 
   const removeEquipment = useCallback((index: number) => {
+    if (window.prompt('Autenticação necessária. Digite a senha de administrador (1678) para confirmar a exclusão do equipamento:') !== '1678') return;
     setFormData(prev => ({...prev, equipment: (prev.equipment || []).filter((_, i) => i !== index)}));
     setOpenEquipmentIndex(prev => (prev === index ? null : prev !== null && prev > index ? prev - 1 : prev));
   }, []);
@@ -286,7 +286,6 @@ const CustomerForm: React.FC<CustomerFormProps> = ({ customers, initialData, onS
             </div>
             <FormField label="Cidade" name="cidade" value={formData.cidade || ''} onChange={handleBaseChange} required isEditMode={isEditMode} />
             <FormField label="Cobrador" name="linhaNumero" value={formData.linhaNumero || ''} onChange={handleBaseChange} isEditMode={isEditMode}/>
-            <FormField label="ID Loja Mercado Pago" name="mercadoPagoStoreId" value={formData.mercadoPagoStoreId || ''} onChange={handleBaseChange} placeholder="Ex: 12345678" isEditMode={isEditMode}/>
             {isEditMode && !areValuesHidden && (
                 <FormField label="Dívida Atual (R$)" name="debtAmount" value={String(formData.debtAmount || '')} onChange={handleBaseChange} type="text" inputMode="decimal" isEditMode={isEditMode}/>
             )}
@@ -321,8 +320,6 @@ const CustomerForm: React.FC<CustomerFormProps> = ({ customers, initialData, onS
                                                 <label className={`block text-sm font-medium ${isEditMode ? 'text-slate-300' : 'text-slate-600 dark:text-slate-300'} mb-1`}>Tipo de Cobrança</label>
                                                 <select name="billingType" value={equip.billingType || 'perPlay'} onChange={e => handleEquipmentChange(index, e)} className={`w-full border rounded-md py-2 px-3 focus:outline-none focus:ring-2 focus:ring-lime-500 ${isEditMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-slate-100 dark:bg-slate-700 border-slate-300 dark:border-slate-600 text-slate-900 dark:text-white'}`}><option value="perPlay">Por Ficha</option><option value="monthly">Mensal Fixo</option></select>
                                             </div>
-                                            <FormField label="ID Heroku (ESP32)" name="herokuId" value={String(equip.herokuId || '')} onChange={e => handleEquipmentChange(index, e)} placeholder="Ex: heroku-app-name" isEditMode={isEditMode} />
-                                            <div/>
                                             <FormField label="Número da Mesa" name="numero" value={String(equip.numero || '')} onChange={e => handleEquipmentChange(index, e)} isEditMode={isEditMode} />
                                             <FormField label="Nº Relógio da Mesa" name="relogioNumero" value={String(equip.relogioNumero || '')} onChange={e => handleEquipmentChange(index, e)} isEditMode={isEditMode} />
                                             <FormField label="Leitura Anterior" name="relogioAnterior" type="number" inputMode="numeric" value={String(equip.relogioAnterior || '0')} onChange={e => handleEquipmentChange(index, e)} isEditMode={isEditMode} />
@@ -349,7 +346,6 @@ const CustomerForm: React.FC<CustomerFormProps> = ({ customers, initialData, onS
                                             <FormField label="Leitura Anterior" name="relogioAnterior" type="number" inputMode="numeric" value={String(equip.relogioAnterior || '0')} onChange={e => handleEquipmentChange(index, e)} isEditMode={isEditMode} />
                                             <FormField label="% da Firma" name="porcentagemJukeboxFirma" type="number" inputMode="numeric" value={String(equip.porcentagemJukeboxFirma || '50')} onChange={e => handleEquipmentChange(index, e)} isEditMode={isEditMode} />
                                             <FormField label="% do Cliente" name="porcentagemJukeboxCliente" type="number" inputMode="numeric" value={String(equip.porcentagemJukeboxCliente || '50')} onChange={e => handleEquipmentChange(index, e)} isEditMode={isEditMode} />
-                                            <FormField label="ID Heroku (ESP32)" name="herokuId" value={String(equip.herokuId || '')} onChange={e => handleEquipmentChange(index, e)} placeholder="Ex: heroku-app-name" isEditMode={isEditMode} />
                                         </div>
                                     ) : (
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -361,7 +357,6 @@ const CustomerForm: React.FC<CustomerFormProps> = ({ customers, initialData, onS
                                                 <select name="aluguelTipo" value={equip.aluguelPercentual != null ? 'percentual' : 'fixo'} onChange={e => handleEquipmentChange(index, e)} className={`w-full border rounded-md py-2 px-3 focus:outline-none focus:ring-2 focus:ring-lime-500 ${isEditMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-slate-100 dark:bg-slate-700 border-slate-300 dark:border-slate-600 text-slate-900 dark:text-white'}`}><option value="fixo">Valor Fixo (R$)</option><option value="percentual">Percentual (%)</option></select>
                                             </div>
                                             {equip.aluguelPercentual != null ? <FormField label="Aluguel (%)" name="aluguelPercentual" type="number" inputMode="numeric" value={String(equip.aluguelPercentual ?? '')} onChange={e => handleEquipmentChange(index, e)} isEditMode={isEditMode} /> : <FormField label="Aluguel Fixo (R$)" name="aluguelValor" type="text" inputMode="numeric" value={String(equip.aluguelValor || '')} onChange={e => handleEquipmentChange(index, e)} isEditMode={isEditMode} />}
-                                            <FormField label="ID Heroku (ESP32)" name="herokuId" value={String(equip.herokuId || '')} onChange={e => handleEquipmentChange(index, e)} placeholder="Ex: heroku-app-name" isEditMode={isEditMode} />
                                         </div>
                                     )}
                                 </div>

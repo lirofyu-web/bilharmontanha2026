@@ -16,7 +16,9 @@ import { GreenBilliardBallIcon } from './icons/GreenBilliardBallIcon';
 import { YellowBilliardBallIcon } from './icons/YellowBilliardBallIcon';
 import { PurpleBilliardBallIcon } from './icons/PurpleBilliardBallIcon';
 import { DocumentTextIcon } from './icons/DocumentTextIcon';
-import { CreditCardIcon } from './icons/CreditCardIcon';
+import { BellAlertIcon } from './icons/BellAlertIcon';
+import { CheckCircleIcon } from './icons/CheckCircleIcon';
+
 
 interface CustomerCardProps {
   customer: Customer;
@@ -32,13 +34,14 @@ interface CustomerCardProps {
   onFinalizePendingPayment: (billing: Billing) => void;
   onPendingPaymentAction: (customer: Customer, billing: Billing) => void;
   onWarningClick: (customer: Customer) => void;
+  onAddWarning: (customerId: string, message: string) => Promise<void>;
+  onResolveWarning: (warningId: string) => Promise<void>;
   hasActiveWarning: boolean;
+  activeWarningId?: string;
   showNotification: (message: string, type?: 'success' | 'error') => void;
   onFocusCustomer: (customer: Customer) => void;
   areValuesHidden: boolean;
   onUpdateCustomer: (updatedCustomer: Partial<Customer> & { id: string }) => void;
-  onOpenDigitalBilling?: (customer: Customer) => void;
-  onOpenEsp32Dashboard?: (herokuId: string, machineName: string, customerMpStoreId?: string) => void;
 }
 
 const EquipmentIcon: React.FC<{ type: Equipment['type'], className?: string }> = ({ type, className }) => {
@@ -70,8 +73,9 @@ const EquipmentDetailRow: React.FC<{ label: string; value: string | number | und
 };
 
 
-const CustomerCard: React.FC<CustomerCardProps> = ({ customer, billings, onBill, onEdit, onDelete, onPayDebt, onHistory, onLocationActions, onWhatsAppActions, onFichaActions, onWarningClick, hasActiveWarning, showNotification, onFocusCustomer, onFinalizePendingPayment, onPendingPaymentAction, areValuesHidden, onUpdateCustomer, onOpenDigitalBilling, onOpenEsp32Dashboard }) => {
+const CustomerCard: React.FC<CustomerCardProps> = ({ customer, billings, onBill, onEdit, onDelete, onPayDebt, onHistory, onLocationActions, onWhatsAppActions, onFichaActions, onWarningClick, hasActiveWarning, activeWarningId, showNotification, onFocusCustomer, onFinalizePendingPayment, onPendingPaymentAction, onAddWarning, onResolveWarning, areValuesHidden, onUpdateCustomer }) => {
     const [isExpanded, setIsExpanded] = useState(false);
+    const [isConfirmingResolve, setIsConfirmingResolve] = useState(false);
 
     const pendingBilling = useMemo(() => {
         return billings.find(b => 
@@ -109,6 +113,26 @@ const CustomerCard: React.FC<CustomerCardProps> = ({ customer, billings, onBill,
         onWarningClick(customer);
     };
 
+    const handleAvisoAction = async () => {
+        if (hasActiveWarning) {
+            setIsConfirmingResolve(true);
+        } else {
+            const message = window.prompt(`Novo aviso para ${customer.name}:`);
+            if (message && message.trim()) {
+                await onAddWarning(customer.id, message.trim());
+            }
+        }
+    };
+
+    const confirmResolveWarning = async () => {
+        const activeWarning = (billings as any).warnings?.find((w: any) => w.customerId === customer.id && !w.isResolved); 
+        // Wait, I don't have warnings list here, but I can use onWarningClick to find it or ClientesView passes it.
+        // Actually, ClientesView should pass the active warning or App.tsx should handle it.
+        // Let's use a simpler approach: the handler in App.tsx can find the active warning for this customer.
+        // But onResolveWarning needs a warningId.
+        // I'll need the active warning object.
+    };
+
     const ActionButton: React.FC<{onClick: () => void, icon: React.ReactNode, label: string, colorClass: string, disabled?: boolean, isPrimary?: boolean, title?: string, pulse?: boolean}> = ({onClick, icon, label, colorClass, disabled, isPrimary, title, pulse}) => (
         <button
             onClick={onClick}
@@ -134,7 +158,7 @@ const CustomerCard: React.FC<CustomerCardProps> = ({ customer, billings, onBill,
     };
 
     return (
-        <div className="bg-white dark:bg-slate-800 rounded-lg shadow-lg border border-slate-200 dark:border-slate-700 transition-shadow duration-300 hover:shadow-xl">
+        <div className={`bg-white dark:bg-slate-800 rounded-lg shadow-lg border transition-shadow duration-300 hover:shadow-xl ${hasActiveWarning ? 'border-red-500 border-2' : 'border-slate-200 dark:border-slate-700'}`}>
             <div className="p-3">
                 <div
                     className="flex flex-wrap justify-between items-start gap-2 cursor-pointer group"
@@ -181,18 +205,17 @@ const CustomerCard: React.FC<CustomerCardProps> = ({ customer, billings, onBill,
                             title={pendingBilling ? `Ações para pagamento pendente` : "Cobrar novo equipamento"}
                         />
                         <ActionButton onClick={() => onEdit(customer)} icon={<PencilIcon className="w-5 h-5" />} label="Editar" colorClass="bg-sky-600" title='Editar Cliente' />
-                        <ActionButton 
-                            onClick={() => onPayDebt(customer)} 
+                        <ActionButton onClick={() => onPayDebt(customer)} 
                             icon={<CurrencyDollarIcon className="w-5 h-5" />} 
                             label={hasDebt ? "Pagar" : "Dívida"} 
                             colorClass={hasDebt ? "bg-amber-600" : "bg-orange-500"}
                             title={hasDebt ? "Registrar pagamento de dívida" : "Adicionar uma dívida avulsa"}
                         />
-                        <ActionButton onClick={() => onHistory(customer)} icon={<HistoryIcon className="w-5 h-5" />} label="Histórico" colorClass="bg-indigo-600" />
+                        <ActionButton onClick={() => onHistory(customer)} icon={<HistoryIcon className="w-5 h-5" />} label="Histórico" colorClass="bg-amber-800" />
                         <ActionButton onClick={() => onFichaActions(customer)} icon={<DocumentTextIcon className="w-5 h-5" />} label="Ficha" colorClass="bg-pink-600" title='Ver ou compartilhar ficha' />
                         <ActionButton onClick={() => onDelete(customer)} icon={<TrashIcon className="w-5 h-5" />} label="Excluir" colorClass="bg-red-600" title='Excluir Cliente' />
                     </div>
-                    <div className="grid grid-cols-2 gap-1.5">
+                    <div className="grid grid-cols-3 gap-1.5">
                         <ActionButton
                             onClick={() => onWhatsAppActions(customer)}
                             icon={<WhatsAppIcon className="w-5 h-5" />}
@@ -200,6 +223,49 @@ const CustomerCard: React.FC<CustomerCardProps> = ({ customer, billings, onBill,
                             colorClass={customer.telefone ? 'bg-green-700' : 'bg-slate-600'}
                             title={customer.telefone ? 'Opções do WhatsApp' : 'Adicionar WhatsApp'}
                         />
+                        {hasActiveWarning ? (
+                            isConfirmingResolve ? (
+                                <div className="flex flex-col gap-1">
+                                    <button 
+                                        onClick={async (e) => { 
+                                            e.stopPropagation();
+                                            if (activeWarningId) {
+                                                await onResolveWarning(activeWarningId);
+                                            } else {
+                                                // Fallback to opening the modal if ID is missing
+                                                onWarningClick(customer);
+                                            }
+                                            setIsConfirmingResolve(false);
+                                        }} 
+                                        className="bg-green-600 text-white text-[10px] font-bold py-1 rounded"
+                                    >
+                                        SIM
+                                    </button>
+                                    <button 
+                                        onClick={(e) => { e.stopPropagation(); setIsConfirmingResolve(false); }} 
+                                        className="bg-red-600 text-white text-[10px] font-bold py-1 rounded"
+                                    >
+                                        NÃO
+                                    </button>
+                                </div>
+                            ) : (
+                                <ActionButton
+                                    onClick={(e) => { e.stopPropagation(); setIsConfirmingResolve(true); }}
+                                    icon={<CheckCircleIcon className="w-5 h-5" />}
+                                    label="RESOLVER"
+                                    colorClass="bg-purple-600"
+                                    title="Resolver aviso pendente"
+                                />
+                            )
+                        ) : (
+                            <ActionButton
+                                onClick={handleAvisoAction}
+                                icon={<BellAlertIcon className="w-5 h-5" />}
+                                label="AVISO"
+                                colorClass="bg-purple-600"
+                                title="Criar novo aviso"
+                            />
+                        )}
                         <ActionButton
                             onClick={handleLocationClick}
                             icon={<LocationArrowIcon className="w-5 h-5" />}
@@ -208,32 +274,6 @@ const CustomerCard: React.FC<CustomerCardProps> = ({ customer, billings, onBill,
                             title={customer.latitude ? 'Ver localização' : 'Salvar localização atual'}
                         />
                     </div>
-                </div>
-
-                {/* Standardized Integration Buttons */}
-                <div className="mt-2 grid grid-cols-2 gap-1.5">
-                    {customer.mercadoPagoStoreId && onOpenDigitalBilling && (
-                        <ActionButton
-                            onClick={() => onOpenDigitalBilling(customer)}
-                            icon={<CreditCardIcon className="w-5 h-5" />}
-                            label="MP DIGITAL"
-                            colorClass="bg-emerald-600"
-                            title="Faturamento Digital"
-                        />
-                    )}
-                    
-                    {customer.equipment.some(e => (e as any).herokuId) && onOpenEsp32Dashboard && (
-                        <ActionButton
-                            onClick={() => {
-                                const equip = customer.equipment.find(e => (e as any).herokuId);
-                                if (equip) onOpenEsp32Dashboard((equip as any).herokuId, `${customer.name} - ${equip.numero}`, customer.mercadoPagoStoreId);
-                            }}
-                            icon={<div className="w-2.5 h-2.5 bg-green-400 rounded-full animate-pulse shadow-[0_0_5px_rgba(74,222,128,0.5)]"></div>}
-                            label="CONTROLE PIX"
-                            colorClass="bg-blue-600"
-                            title="Gestão Remota ESP32"
-                        />
-                    )}
                 </div>
             </div>
 

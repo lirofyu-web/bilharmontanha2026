@@ -15,10 +15,9 @@ interface IndustrialViewProps {
     onViewBilling: (billing: Billing | DebtPayment) => void;
     onDeleteBilling: (item: Billing | DebtPayment) => void;
     onPayDebtCustomer: (customer: Customer) => void;
-    onOpenDigitalBilling: (customer: Customer) => void;
+
     onResolveWarning: (warningId: string) => void;
     onPrintDebtStatement: (customer: Customer) => void;
-    onOpenEsp32Dashboard: (herokuId: string, machineName: string, customerMpStoreId?: string) => void;
 }
 
 const IndustrialView: React.FC<IndustrialViewProps> = ({ 
@@ -31,15 +30,13 @@ const IndustrialView: React.FC<IndustrialViewProps> = ({
     onViewBilling, 
     onDeleteBilling, 
     onPayDebtCustomer, 
-    onOpenDigitalBilling, 
     onResolveWarning, 
-    onPrintDebtStatement,
-    onOpenEsp32Dashboard
+    onPrintDebtStatement
 }) => {
     const [equipmentNumber, setEquipmentNumber] = useState('');
     const [error, setError] = useState('');
     const [tapCount, setTapCount] = useState(0);
-    const [activeTab, setActiveTab] = useState<'pending' | 'history' | 'debtors' | 'warnings' | 'mp_digital'>('pending');
+    const [activeTab, setActiveTab] = useState<'pending' | 'history' | 'debtors' | 'warnings'>('pending');
     
     // Modal de Aviso Ativo
     const [activeWarningModal, setActiveWarningModal] = useState<{ 
@@ -72,9 +69,7 @@ const IndustrialView: React.FC<IndustrialViewProps> = ({
         return warnings.filter(w => !w.isResolved).sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
     }, [warnings]);
 
-    const mpDigitalCustomers = useMemo(() => 
-        customers.filter(c => c.mercadoPagoStoreId), 
-    [customers]);
+
 
     // Pagination Hooks (15 items per page)
     const { 
@@ -101,11 +96,7 @@ const IndustrialView: React.FC<IndustrialViewProps> = ({
         hasMore: hasMoreWarnings 
     } = usePagination(activeWarnings, 15);
 
-    const { 
-        slicedItems: slicedMpDigital, 
-        loadMore: loadMoreMpDigital, 
-        hasMore: hasMoreMpDigital 
-    } = usePagination(mpDigitalCustomers, 15);
+
 
     const handleTitleClick = () => {
         const newCount = tapCount + 1;
@@ -244,13 +235,7 @@ const IndustrialView: React.FC<IndustrialViewProps> = ({
                         <span className="text-4xl font-black">{activeWarnings.length}</span>
                         <span className="font-bold uppercase tracking-widest text-xs">Avisos</span>
                     </button>
-                    <button 
-                        onClick={() => setActiveTab('mp_digital')}
-                        className={`col-span-2 p-8 rounded-2xl flex items-center justify-center gap-4 transition-all active:scale-95 border-b-8 shadow-lg ${activeTab === 'mp_digital' ? 'bg-green-600 text-white border-green-800 shadow-green-900/40' : 'bg-slate-900/50 text-slate-500 border-slate-950'}`}
-                    >
-                        <CreditCardIcon className="w-10 h-10" />
-                        <span className="text-2xl font-black uppercase tracking-tighter">MP DIGITAL</span>
-                    </button>
+
                 </div>
 
                 {/* Tab Content: Pendentes */}
@@ -276,33 +261,12 @@ const IndustrialView: React.FC<IndustrialViewProps> = ({
                                             >
                                                 FINALIZAR
                                             </button>
-                                            {customers.find(c => c.id === billing.customerId)?.mercadoPagoStoreId && (
-                                                <button
-                                                    onClick={(e) => {
-                                                        e.stopPropagation();
-                                                        const c = customers.find(c => c.id === billing.customerId);
-                                                        if (c) onOpenDigitalBilling(c);
-                                                    }}
-                                                    className="w-full bg-emerald-600 text-white font-black px-4 py-4 rounded-xl text-lg active:scale-95 transition-all uppercase tracking-tighter shadow-lg"
-                                                >
-                                                    MP DIGITAL
-                                                </button>
-                                            )}
-                                            {customers.find(c => c.id === billing.customerId)?.equipment.some(e => (e as any).herokuId) && (
-                                                <button
-                                                    onClick={(e) => {
-                                                        e.stopPropagation();
-                                                        const c = customers.find(c => c.id === billing.customerId);
-                                                        const equip = c?.equipment.find(e => (e as any).herokuId);
-                                                        if (c && equip) {
-                                                            onOpenEsp32Dashboard((equip as any).herokuId, `${c.name} - ${equip.numero}`, c.mercadoPagoStoreId);
-                                                        }
-                                                    }}
-                                                    className="w-full bg-blue-600 text-white font-black px-4 py-4 rounded-xl text-lg active:scale-95 transition-all uppercase tracking-tighter shadow-lg"
-                                                >
-                                                    CONTROLE PIX
-                                                </button>
-                                            )}
+                                            <button
+                                                onClick={() => onDeleteBilling(billing)}
+                                                className="bg-red-900/40 text-red-500 border border-red-500/30 font-black px-6 py-2 rounded-lg hover:bg-red-900/60 active:scale-95 transition-all whitespace-nowrap text-xs"
+                                            >
+                                                EXCLUIR
+                                            </button>
                                         </div>
                                     </div>
                                 ))}
@@ -347,35 +311,6 @@ const IndustrialView: React.FC<IndustrialViewProps> = ({
                                                     <p className={`${isDebt ? 'text-indigo-400' : 'text-yellow-500'} font-black text-xl`}>R$ {amount.toFixed(2)}</p>
                                                     <p className="text-[10px] text-slate-600 uppercase font-bold">{item.paymentMethod}</p>
                                                 </div>
-                                            </div>
-                                            <div className="grid grid-cols-2 gap-3 w-full">
-                                                {!isDebt && customers.find(c => c.id === item.customerId)?.mercadoPagoStoreId && (
-                                                    <button
-                                                        onClick={(e) => {
-                                                            e.stopPropagation();
-                                                            const c = customers.find(c => c.id === item.customerId);
-                                                            if (c) onOpenDigitalBilling(c);
-                                                        }}
-                                                        className="w-full bg-emerald-600 text-white font-bold py-4 px-4 rounded-xl transition-all active:scale-95 shadow-md text-sm"
-                                                    >
-                                                        MP DIGITAL
-                                                    </button>
-                                                )}
-                                                {!isDebt && customers.find(c => c.id === item.customerId)?.equipment.some(e => (e as any).herokuId) && (
-                                                    <button
-                                                        onClick={(e) => {
-                                                            e.stopPropagation();
-                                                            const c = customers.find(c => c.id === item.customerId);
-                                                            const equip = c?.equipment.find(e => (e as any).herokuId);
-                                                            if (c && equip) {
-                                                                onOpenEsp32Dashboard((equip as any).herokuId, `${c.name} - ${equip.numero}`, c.mercadoPagoStoreId);
-                                                            }
-                                                        }}
-                                                        className="w-full bg-blue-600 text-white font-bold py-4 px-4 rounded-xl transition-all active:scale-95 shadow-md text-sm"
-                                                    >
-                                                        CONTROLE PIX
-                                                    </button>
-                                                )}
                                             </div>
                                             <div className="flex gap-2 pt-2 border-t border-slate-800/50">
                                                 <button
@@ -436,27 +371,6 @@ const IndustrialView: React.FC<IndustrialViewProps> = ({
                                                 <PrinterIcon className="w-4 h-4" />
                                                 IMPRIMIR FICHA
                                             </button>
-                                            {customer.mercadoPagoStoreId && (
-                                                <button
-                                                    onClick={() => onOpenDigitalBilling(customer)}
-                                                    className="flex-1 bg-emerald-600 text-white font-black py-4 rounded-lg hover:bg-emerald-500 active:scale-95 transition-all uppercase tracking-widest text-sm shadow-lg"
-                                                >
-                                                    MP DIGITAL
-                                                </button>
-                                            )}
-                                            {customer.equipment.some(e => (e as any).herokuId) && (
-                                                <button
-                                                    onClick={() => {
-                                                        const equip = customer.equipment.find(e => (e as any).herokuId);
-                                                        if (equip) {
-                                                            onOpenEsp32Dashboard((equip as any).herokuId, `${customer.name} - ${equip.numero}`, customer.mercadoPagoStoreId);
-                                                        }
-                                                    }}
-                                                    className="flex-1 bg-blue-600 text-white font-black py-4 rounded-lg hover:bg-blue-500 active:scale-95 transition-all uppercase tracking-widest text-sm shadow-lg"
-                                                >
-                                                    PIX
-                                                </button>
-                                            )}
                                         </div>
                                     </div>
                                 ))}
@@ -506,43 +420,7 @@ const IndustrialView: React.FC<IndustrialViewProps> = ({
                     </div>
                 )}
 
-                {/* Tab Content: MP DIGITAL Selection */}
-                {activeTab === 'mp_digital' && (
-                    <div className="space-y-4">
-                        <p className="text-center text-green-500 font-black uppercase tracking-widest text-sm mb-4">Selecione a Loja para Sincronizar</p>
-                        {mpDigitalCustomers.length > 0 ? (
-                            <>
-                                {slicedMpDigital.map(customer => (
-                                     <button
-                                        key={customer.id}
-                                        onClick={() => onOpenDigitalBilling(customer)}
-                                        className="w-full bg-slate-900 border-2 border-green-500/20 p-6 rounded-2xl flex items-center justify-between gap-4 active:scale-95 transition-all text-left group hover:border-green-500/50"
-                                     >
-                                        <div className="min-w-0">
-                                            <p className="text-2xl font-black text-white uppercase tracking-tighter group-hover:text-green-400 transition-colors">{customer.name}</p>
-                                            <p className="text-slate-500 font-mono text-xs mt-1">ID LOJA: {customer.mercadoPagoStoreId}</p>
-                                            <p className="text-slate-400 text-sm mt-2 font-bold italic">{customer.cidade || 'Local não informado'}</p>
-                                        </div>
-                                         <div className="flex gap-2">
-                                            <div className="bg-green-500/10 p-4 rounded-xl text-green-500 group-hover:bg-green-500 group-hover:text-black transition-all">
-                                                <CreditCardIcon className="w-8 h-8" />
-                                            </div>
-                                         </div>
-                                     </button>
-                                ))}
-                                <InfiniteScrollTrigger 
-                                    onIntersect={loadMoreMpDigital} 
-                                    hasMore={hasMoreMpDigital} 
-                                    className="border-t-2 border-green-500/10 mt-4" 
-                                />
-                            </>
-                        ) : (
-                            <div className="bg-slate-900/50 border-2 border-dashed border-slate-800 p-12 rounded-3xl text-center">
-                                <p className="text-slate-600 font-bold italic uppercase tracking-widest">Nenhuma loja Mercado Pago configurada</p>
-                            </div>
-                        )}
-                    </div>
-                )}
+
             </div>
 
             {/* Modal de Aviso Interceptador */}
@@ -604,7 +482,7 @@ const IndustrialView: React.FC<IndustrialViewProps> = ({
             )}
 
             <div className="mt-20 text-slate-500 font-bold uppercase tracking-widest text-sm">
-                PIX MONTANHA v1.0
+                MONTANHA GESTÃO v1.0
             </div>
 
             <style>{`

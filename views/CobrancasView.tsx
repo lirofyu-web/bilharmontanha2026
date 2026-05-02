@@ -123,11 +123,23 @@ const BillingsList: React.FC<BillingsListProps> = ({
                             </div>
                             <div className="text-right shrink-0">
                                 <p className={`${isDebt ? 'text-indigo-600 dark:text-indigo-400' : 'text-lime-600 dark:text-lime-400'} font-mono font-bold text-lg`}>
-                                    {areValuesHidden ? 'R$ •••,••' : `R$ ${(isDebt ? item.amountPaid : getNetBilledAmount(item)).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                                    {areValuesHidden ? 'R$ •••,••' : (
+                                        isDebt ? `R$ ${item.amountPaid.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` : (
+                                            <>
+                                                R$ {getNetBilledAmount(item).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                                                {item.valorDividaPaga > 0 && (
+                                                    <span className="block text-[10px] text-indigo-500 font-bold opacity-80">+ R$ {item.valorDividaPaga.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} Dívida</span>
+                                                )}
+                                                {item.valorBonus > 0 && (
+                                                    <span className="block text-[10px] text-amber-500 font-bold opacity-80">- R$ {item.valorBonus.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} Desconto</span>
+                                                )}
+                                            </>
+                                        )
+                                    )}
                                 </p>
                                 {item.valorDebitoNegativo && item.valorDebitoNegativo > 0 && (
-                                    <p className="font-mono text-sm text-red-500 dark:text-red-400">
-                                        Dívida: {areValuesHidden ? 'R$ •••,••' : `R$ ${item.valorDebitoNegativo.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                                    <p className="font-mono text-[10px] text-red-500/80 dark:text-red-400/80">
+                                        Faltou: {areValuesHidden ? 'R$ •••,••' : `R$ ${item.valorDebitoNegativo.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`}
                                     </p>
                                 )}
                                 <div className="mt-1"><PaymentMethodDisplay method={item.paymentMethod} /></div>
@@ -139,9 +151,11 @@ const BillingsList: React.FC<BillingsListProps> = ({
                                  item.equipmentType === 'jukebox' ? <JukeboxIcon className="w-4 h-4 text-fuchsia-500 dark:text-fuchsia-400" /> :
                                  <CraneIcon className="w-4 h-4 text-orange-500 dark:text-orange-400" />}
                                 <span className="text-slate-600 dark:text-slate-300">
-                                    {item.equipmentType === 'mesa' ? `Mesa ${item.equipmentNumero || '(Rec. Dívida)'}` : 
-                                     item.equipmentType === 'jukebox' ? `Jukebox ${item.equipmentNumero || '(Rec. Dívida)'}` :
-                                     `Grua ${item.equipmentNumero || '(Rec. Dívida)'}`}
+                                    {isDebt ? 'PAGAMENTO DE DÍVIDA' : (
+                                        item.equipmentType === 'mesa' ? `Mesa ${item.equipmentNumero || ''}` : 
+                                        item.equipmentType === 'jukebox' ? `Jukebox ${item.equipmentNumero || ''}` :
+                                        `Grua ${item.equipmentNumero || ''}`
+                                    )}
                                 </span>
                             </span>
                             <div className="flex gap-4">
@@ -189,20 +203,34 @@ const BillingsList: React.FC<BillingsListProps> = ({
                                                 {item.equipmentType === 'mesa' ? <BilliardIcon className="w-4 h-4 text-cyan-500 dark:text-cyan-400" /> : 
                                                  item.equipmentType === 'jukebox' ? <JukeboxIcon className="w-4 h-4 text-fuchsia-500 dark:text-fuchsia-400" /> :
                                                  <CraneIcon className="w-4 h-4 text-orange-500 dark:text-orange-400" />}
-                                                {item.equipmentType === 'mesa' ? `Mesa ${item.equipmentNumero || '(Rec. Dívida)'}` : 
-                                                 item.equipmentType === 'jukebox' ? `Jukebox ${item.equipmentNumero || '(Rec. Dívida)'}` :
-                                                 `Grua ${item.equipmentNumero || '(Rec. Dívida)'}`}
+                                                {isDebt ? 'PAGAMENTO DE DÍVIDA' : (
+                                                    item.equipmentType === 'mesa' ? `Mesa ${item.equipmentNumero || ''}` : 
+                                                    item.equipmentType === 'jukebox' ? `Jukebox ${item.equipmentNumero || ''}` :
+                                                    `Grua ${item.equipmentNumero || ''}`
+                                                )}
                                             </span>
                                         </td>
                                         <td className="px-6 py-4"><PaymentMethodDisplay method={item.paymentMethod} /></td>
                                         <td className="px-6 py-4 text-right font-mono font-bold">
                                             <div className="flex flex-col items-end">
                                                 <span className={isDebt ? "text-indigo-600 dark:text-indigo-400" : "text-lime-600 dark:text-lime-400"}>
-                                                    {areValuesHidden ? 'R$ •••,••' : `R$ ${(isDebt ? item.amountPaid : getNetBilledAmount(item)).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                                                    {areValuesHidden ? 'R$ •••,••' : (
+                                                        isDebt ? `R$ ${item.amountPaid.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` : (
+                                                            <>
+                                                                R$ {getNetBilledAmount(item).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                                                                {item.valorDividaPaga > 0 && (
+                                                                    <span className="block text-[10px] text-indigo-500 font-bold opacity-80">+ R$ {item.valorDividaPaga.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} Dívida</span>
+                                                                )}
+                                                                {item.valorBonus > 0 && (
+                                                                    <span className="block text-[10px] text-amber-500 font-bold opacity-80">- R$ {item.valorBonus.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} Desconto</span>
+                                                                )}
+                                                            </>
+                                                        )
+                                                    )}
                                                 </span>
                                                 {item.valorDebitoNegativo && item.valorDebitoNegativo > 0 && (
-                                                    <span className="text-xs text-red-500 dark:text-red-400">
-                                                        (Dívida: {areValuesHidden ? 'R$ •••,••' : `R$ ${item.valorDebitoNegativo.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`})
+                                                    <span className="text-[10px] text-red-500/80 dark:text-red-400/80">
+                                                        (Faltou: {areValuesHidden ? 'R$ •••,••' : `R$ ${item.valorDebitoNegativo.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`})
                                                     </span>
                                                 )}
                                             </div>
@@ -373,7 +401,9 @@ const CobrancasView: React.FC<CobrancasViewProps> = ({
     const filteredAndSortedData = useMemo(() => {
         const combined = [
             ...billings.map(b => ({ ...b, sortDate: new Date(b.settledAt).getTime() })),
-            ...debtPayments.map(dp => ({ ...dp, sortDate: new Date(dp.paidAt).getTime() }))
+            ...debtPayments
+                .filter(dp => !dp.billingId) // Only standalone debt payments
+                .map(dp => ({ ...dp, sortDate: new Date(dp.paidAt).getTime() }))
         ];
 
         let items = combined;
@@ -382,9 +412,13 @@ const CobrancasView: React.FC<CobrancasViewProps> = ({
                 if (equipmentFilter !== 'all' && item.equipmentType !== equipmentFilter) return false;
                 if (searchQuery && !item.customerName.toLowerCase().includes(searchQuery.toLowerCase())) return false;
                 
-                const itemDate = new Date(item.sortDate);
-                if (dateRange.start && new Date(dateRange.start + 'T00:00:00') > itemDate) return false;
-                if (dateRange.end && new Date(dateRange.end + 'T23:59:59') < itemDate) return false;
+                // PENDING PAYMENTS ignore the date filter so they stay visible across months
+                const isPending = 'paymentMethod' in item && item.paymentMethod === 'pending_payment';
+                if (!isPending) {
+                    const itemDate = new Date(item.sortDate);
+                    if (dateRange.start && new Date(dateRange.start + 'T00:00:00') > itemDate) return false;
+                    if (dateRange.end && new Date(dateRange.end + 'T23:59:59') < itemDate) return false;
+                }
                 return true;
             });
         }
@@ -464,9 +498,10 @@ const CobrancasView: React.FC<CobrancasViewProps> = ({
 
     const getNetBilledAmount = useCallback((billing: Billing): number => {
       if (billing.equipmentType === 'grua') {
-        return (billing.recebimentoEspecie || 0) + (billing.recebimentoPix || 0);
+        const val = (billing.recebimentoEspecie || 0) + (billing.recebimentoPix || 0);
+        return val;
       }
-      return (billing.valorPagoDinheiro || 0) + (billing.valorPagoPix || 0);
+      return (billing.valorPagoDinheiro || 0) + (billing.valorPagoPix || 0) - (billing.valorDividaPaga || 0);
     }, []);
 
     const totalBilled = useMemo(() => {
@@ -605,11 +640,17 @@ const CobrancasView: React.FC<CobrancasViewProps> = ({
                                         {areValuesHidden ? 'R$ •••,••' : `R$ ${(billing.valorTotal - (billing.valorBonus || 0)).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
                                     </p>
                                 </div>
-                                {billing.equipmentType !== 'grua' && (
-                                    <button onClick={() => onFinalizePayment(billing)} className="w-full sm:w-auto bg-amber-600 text-white font-bold py-2 px-4 rounded-md hover:bg-amber-500">
-                                        Finalizar Pagamento
+                                <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+                                    {billing.equipmentType !== 'grua' && (
+                                        <button onClick={() => onFinalizePayment(billing)} className="flex-1 bg-amber-600 text-white font-bold py-2 px-4 rounded-md hover:bg-amber-500 whitespace-nowrap">
+                                            Finalizar Pagamento
+                                        </button>
+                                    )}
+                                    <button onClick={() => onDeleteBilling(billing)} className="flex-1 bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 font-bold py-2 px-4 rounded-md hover:bg-red-200 dark:hover:bg-red-900/50 flex items-center justify-center gap-2">
+                                        <TrashIcon className="w-5 h-5" />
+                                        Excluir
                                     </button>
-                                )}
+                                </div>
                             </div>
                         ))}
                     </div>
@@ -627,6 +668,7 @@ const CobrancasView: React.FC<CobrancasViewProps> = ({
                     onConfirm={handleConfirmDelete} 
                     title="Confirmar Exclusão" 
                     confirmText="Sim, Excluir"
+                    requirePassword="1678"
                 >
                     <p>
                         Tem certeza que deseja excluir esta {('paidAt' in deletingBilling) ? 'baixa de dívida' : 'cobrança'} para <strong>{deletingBilling.customerName}</strong> no valor de <strong>R$ {((deletingBilling as any).valorTotal ?? (deletingBilling as any).amountPaid ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>?

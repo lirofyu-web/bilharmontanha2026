@@ -10,6 +10,7 @@ import { CalculatorIcon } from '../components/icons/CalculatorIcon';
 import { safeParseFloat } from '../utils';
 import { usePagination } from '../hooks/usePagination';
 import { InfiniteScrollTrigger } from '../components/InfiniteScrollTrigger';
+import ActionModal from '../components/ActionModal';
 
 interface DespesasViewProps {
   expenses: Expense[];
@@ -51,6 +52,7 @@ const DespesasView: React.FC<DespesasViewProps> = ({ expenses, onAddExpense, onD
   const [category, setCategory] = useState<Expense['category']>('geral');
   const [sortKey, setSortKey] = useState<SortKey>('date');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
+  const [expenseToDelete, setExpenseToDelete] = useState<string | null>(null);
 
   const getInitialDateRange = () => {
     const today = new Date();
@@ -146,7 +148,7 @@ const DespesasView: React.FC<DespesasViewProps> = ({ expenses, onAddExpense, onD
         <p className="font-mono font-bold text-red-600 dark:text-red-400 text-lg">
             {areValuesHidden ? 'R$ •••,••' : `R$ ${expense.amount.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
         </p>
-        <button onClick={() => onDeleteExpense(expense.id)} className="text-slate-400 hover:text-red-500 dark:text-slate-500 mt-1" title="Excluir Despesa">
+        <button onClick={() => setExpenseToDelete(expense.id)} className="text-slate-400 hover:text-red-500 dark:text-slate-500 mt-1" title="Excluir Despesa">
           <TrashIcon className="w-4 h-4" />
         </button>
       </div>
@@ -212,7 +214,7 @@ const DespesasView: React.FC<DespesasViewProps> = ({ expenses, onAddExpense, onD
                         <td className="px-6 py-4 text-right font-mono text-red-600 dark:text-red-400">
                             {areValuesHidden ? 'R$ •••,••' : `R$ ${expense.amount.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
                         </td>
-                        <td className="px-6 py-4 text-center"><button onClick={() => onDeleteExpense(expense.id)} className="text-slate-400 hover:text-red-500" title="Excluir Despesa"><TrashIcon className="w-5 h-5" /></button></td>
+                        <td className="px-6 py-4 text-center"><button onClick={() => setExpenseToDelete(expense.id)} className="text-slate-400 hover:text-red-500" title="Excluir Despesa"><TrashIcon className="w-5 h-5" /></button></td>
                       </tr>
                     ))}
                     <tr>
@@ -227,6 +229,19 @@ const DespesasView: React.FC<DespesasViewProps> = ({ expenses, onAddExpense, onD
           </tbody>
         </table></div>
       </div>
+      
+      {expenseToDelete && (
+          <ActionModal 
+              isOpen={!!expenseToDelete} 
+              onClose={() => setExpenseToDelete(null)} 
+              onConfirm={() => { onDeleteExpense(expenseToDelete); setExpenseToDelete(null); }} 
+              title="Excluir Despesa" 
+              confirmText="Sim, Excluir"
+              requirePassword="1678"
+          >
+              <p>Tem certeza que deseja excluir esta despesa?</p>
+          </ActionModal>
+      )}
     </>
   );
 };

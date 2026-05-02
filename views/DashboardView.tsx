@@ -5,7 +5,6 @@ import PageHeader from '../components/PageHeader';
 import { JukeboxIcon } from '../components/icons/JukeboxIcon';
 import { BilliardIcon } from '../components/icons/BilliardIcon';
 import { CraneIcon } from '../components/icons/CraneIcon';
-import WarningsManager from '../components/WarningsManager';
 import DebtReminders from '../components/DebtReminders';
 import { ChartBarIcon } from '../components/icons/ChartBarIcon';
 import { CreditCardIcon } from '../components/icons/CreditCardIcon';
@@ -14,7 +13,7 @@ import { CalculatorIcon } from '../components/icons/CalculatorIcon';
 import { CurrencyDollarIcon } from '../components/icons/CurrencyDollarIcon';
 import { LocationMarkerIcon } from '../components/icons/LocationMarkerIcon';
 import { ArrowsRightLeftIcon } from '../components/icons/ArrowsRightLeftIcon';
-import { fetchMpBilling, MpSummary } from '../utils/mercadoPago';
+
 
 
 interface DashboardViewProps {
@@ -23,16 +22,11 @@ interface DashboardViewProps {
   customers: Customer[];
   debtPayments: DebtPayment[];
   warnings: Warning[];
-  onAddWarning: (customerId: string, message: string) => void;
-  onResolveWarning: (warningId: string) => void;
-  onDeleteWarning: (warningId: string) => void;
   lastBackupDate: string | null;
   onExportData: () => void;
   onNavigateToSettings: () => void;
   areValuesHidden: boolean;
   deletedCustomersLog: { customer: Customer, deletedAt: Date }[];
-  mercadoPagoToken?: string;
-  onOpenEsp32Dashboard: (herokuId: string, machineName: string, customerMpStoreId?: string) => void;
 }
 
 
@@ -350,7 +344,7 @@ const VisitationCard: React.FC<{
                 <LocationMarkerIcon className="w-6 h-6 text-green-500" />
                 Visitação no Período
             </h3>
-            <div className="flex-grow flex flex-col justify-around gap-4 sm:gap-6">
+            <div className="flex-grow flex flex-col md:flex-row justify-around gap-4 sm:gap-6 py-4">
                 <EquipmentVisitationStat
                     label="Mesas de Sinuca"
                     icon={<BilliardIcon className="w-5 h-5 text-cyan-500" />}
@@ -440,7 +434,6 @@ const RentalChangesCard: React.FC<{
                 </div>
                 <div>
                     <h4 className="font-bold text-red-500 dark:text-red-400 mb-2">Locações Retiradas ({removedRentals.length})</h4>
-                     <p className="text-xs text-slate-400 mb-2 -mt-2">Esta lista é temporária.</p>
                     <div className="max-h-48 overflow-y-auto pr-2">
                        {removedRentals.length > 0 ? <ChangeList items={removedRentals} /> : <p className="text-sm text-slate-400 italic">Nenhum cliente removido.</p>}
                     </div>
@@ -485,90 +478,11 @@ type MonthlyStats = {
     totalExpenses: number;
 };
 
-const DashboardView: React.FC<DashboardViewProps> = React.memo(({ billings, expenses, customers, debtPayments, warnings, onAddWarning, onResolveWarning, onDeleteWarning, lastBackupDate, onExportData, onNavigateToSettings, areValuesHidden, deletedCustomersLog, mercadoPagoToken, onOpenEsp32Dashboard }) => {
+const DashboardView: React.FC<DashboardViewProps> = React.memo(({ billings, expenses, customers, debtPayments, warnings, lastBackupDate, onExportData, onNavigateToSettings, areValuesHidden, deletedCustomersLog }) => {
     const [currentDate, setCurrentDate] = useState(new Date());
     const [chartView, setChartView] = useState<ChartView>('total');
-    const [digitalStats, setDigitalStats] = useState<MpSummary>({ pix: 0, credit: 0, debit: 0, refunds: 0, count: 0 });
-    const [isDigitalLoading, setIsDigitalLoading] = useState(false);
 
-    // High-Watermark state for persistent highest values
-    const [highWatermark, setHighWatermark] = useState<MpSummary>(() => {
-        const saved = localStorage.getItem(`mp_high_watermark_${new Date().getFullYear()}_${new Date().getMonth()}`);
-        return saved ? JSON.parse(saved) : { pix: 0, credit: 0, debit: 0, refunds: 0, count: 0 };
-    });
 
-    const fetchAllDigitalStats = useCallback(async (isManual: boolean = false) => {
-        const token = mercadoPagoToken || localStorage.getItem('appMercadoPagoToken');
-        if (!token) return;
-
-        const uniqueStoreIds = Array.from(new Set(customers.map(c => c.mercadoPagoStoreId).filter(Boolean))) as string[];
-        if (uniqueStoreIds.length === 0) return;
-
-        setIsDigitalLoading(true);
-        const startOfMonth = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1).toISOString().split('T')[0];
-        const endOfMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0).toISOString().split('T')[0];
-
-        let totalPix = 0;
-        let totalCredit = 0;
-        let totalDebit = 0;
-        let totalRefunds = 0;
-        let totalCount = 0;
-
-        try {
-            const results = await Promise.all(
-                uniqueStoreIds.map(id => fetchMpBilling(id, startOfMonth, endOfMonth, token).catch(() => null))
-            );
-
-            results.forEach(res => {
-                if (res) {
-                    totalPix += res.pix;
-                    totalCredit += res.credit;
-                    totalDebit += res.debit;
-                    totalRefunds += res.refunds;
-                    totalCount += res.count;
-                }
-            });
-
-            const newStats = { pix: totalPix, credit: totalCredit, debit: totalDebit, refunds: totalRefunds, count: totalCount };
-            setDigitalStats(newStats);
-
-            // Update High-Watermark: Only keep the higher of each category or total
-            // Using total liquid as the primary high-watermark decider
-            const currentTotal = totalPix + totalCredit + totalDebit - totalRefunds;
-            const savedTotal = highWatermark.pix + highWatermark.credit + highWatermark.debit - highWatermark.refunds;
-
-            if (currentTotal > savedTotal || isManual) {
-                const updatedHigh = {
-                    pix: Math.max(highWatermark.pix, totalPix),
-                    credit: Math.max(highWatermark.credit, totalCredit),
-                    debit: Math.max(highWatermark.debit, totalDebit),
-                    refunds: Math.min(highWatermark.refunds === 0 ? totalRefunds : highWatermark.refunds, totalRefunds),
-                    count: Math.max(highWatermark.count, totalCount)
-                };
-                setHighWatermark(updatedHigh);
-                localStorage.setItem(
-                    `mp_high_watermark_${currentDate.getFullYear()}_${currentDate.getMonth()}`, 
-                    JSON.stringify(updatedHigh)
-                );
-            }
-        } catch (err) {
-            console.error("Error fetching global digital stats:", err);
-        } finally {
-            setIsDigitalLoading(false);
-        }
-    }, [customers, currentDate, mercadoPagoToken, highWatermark]);
-
-    // Load watermark on date change
-    useEffect(() => {
-        const key = `mp_high_watermark_${currentDate.getFullYear()}_${currentDate.getMonth()}`;
-        const saved = localStorage.getItem(key);
-        if (saved) {
-            setHighWatermark(JSON.parse(saved));
-        } else {
-            setHighWatermark({ pix: 0, credit: 0, debit: 0, refunds: 0, count: 0 });
-        }
-        fetchAllDigitalStats(false);
-    }, [currentDate, fetchAllDigitalStats]);
 
     const handleMonthChange = useCallback((month: number) => {
         setCurrentDate(prevDate => new Date(prevDate.getFullYear(), month, 1));
@@ -600,14 +514,15 @@ const DashboardView: React.FC<DashboardViewProps> = React.memo(({ billings, expe
         const totalDebtReceived = monthlyDebtPayments.reduce((sum, p) => sum + p.amountPaid, 0);
 
         // Agregação de dívidas por equipamento para unificação no faturamento
-        const debtMesaDinheiro = monthlyDebtPayments.filter(p => p.equipmentType === 'mesa').reduce((sum, p) => sum + (p.amountPaidDinheiro || 0), 0);
-        const debtMesaPix = monthlyDebtPayments.filter(p => p.equipmentType === 'mesa').reduce((sum, p) => sum + (p.amountPaidPix || 0), 0);
+        // Filtramos para ignorar pagamentos vinculados a cobranças (!p.billingId), pois estes já estão no valorPago da cobrança
+        const debtMesaDinheiro = monthlyDebtPayments.filter(p => p.equipmentType === 'mesa' && !p.billingId).reduce((sum, p) => sum + (p.amountPaidDinheiro || 0), 0);
+        const debtMesaPix = monthlyDebtPayments.filter(p => p.equipmentType === 'mesa' && !p.billingId).reduce((sum, p) => sum + (p.amountPaidPix || 0), 0);
         
-        const debtJukeboxDinheiro = monthlyDebtPayments.filter(p => p.equipmentType === 'jukebox').reduce((sum, p) => sum + (p.amountPaidDinheiro || 0), 0);
-        const debtJukeboxPix = monthlyDebtPayments.filter(p => p.equipmentType === 'jukebox').reduce((sum, p) => sum + (p.amountPaidPix || 0), 0);
+        const debtJukeboxDinheiro = monthlyDebtPayments.filter(p => p.equipmentType === 'jukebox' && !p.billingId).reduce((sum, p) => sum + (p.amountPaidDinheiro || 0), 0);
+        const debtJukeboxPix = monthlyDebtPayments.filter(p => p.equipmentType === 'jukebox' && !p.billingId).reduce((sum, p) => sum + (p.amountPaidPix || 0), 0);
         
-        const debtGruaDinheiro = monthlyDebtPayments.filter(p => p.equipmentType === 'grua').reduce((sum, p) => sum + (p.amountPaidDinheiro || 0), 0);
-        const debtGruaPix = monthlyDebtPayments.filter(p => p.equipmentType === 'grua').reduce((sum, p) => sum + (p.amountPaidPix || 0), 0);
+        const debtGruaDinheiro = monthlyDebtPayments.filter(p => p.equipmentType === 'grua' && !p.billingId).reduce((sum, p) => sum + (p.amountPaidDinheiro || 0), 0);
+        const debtGruaPix = monthlyDebtPayments.filter(p => p.equipmentType === 'grua' && !p.billingId).reduce((sum, p) => sum + (p.amountPaidPix || 0), 0);
 
         const expensesMesa = monthlyExpenses.filter(e => e.category === 'mesa').reduce((sum, e) => sum + e.amount, 0);
         const expensesJukebox = monthlyExpenses.filter(e => e.category === 'jukebox').reduce((sum, e) => sum + e.amount, 0);
@@ -720,11 +635,11 @@ const DashboardView: React.FC<DashboardViewProps> = React.memo(({ billings, expe
             />
 
             <div className="grid grid-cols-1 lg:grid-cols-6 gap-6 sm:gap-8">
-                <div className="lg:col-span-4">
+                <div className="lg:col-span-6">
                     <FinancialPerformanceCard stats={stats} chartView={chartView} onChartViewChange={setChartView} areValuesHidden={areValuesHidden} />
                 </div>
                 
-                <div className="lg:col-span-2">
+                <div className="lg:col-span-6">
                     <VisitationCard customers={customers} currentDate={currentDate} areValuesHidden={areValuesHidden} />
                 </div>
                 
@@ -770,88 +685,8 @@ const DashboardView: React.FC<DashboardViewProps> = React.memo(({ billings, expe
                     />
                 </InfoCard>
 
-                <div className="lg:col-span-6 bg-white dark:bg-slate-800 p-4 sm:p-6 rounded-lg shadow-lg border border-slate-200 dark:border-slate-700 h-full flex flex-col transition-all">
-                    <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 mb-6">
-                        <div className="flex items-center gap-3 flex-grow">
-                             <div className="p-2 bg-sky-100 dark:bg-sky-900/30 rounded-lg">
-                                <CreditCardIcon className="w-6 h-6 text-sky-500" />
-                            </div>
-                            <div>
-                                <h3 className="text-xl font-bold text-slate-900 dark:text-white leading-tight">Consolidação Faturamento Digital (MP)</h3>
-                                <p className="text-xs text-slate-500 dark:text-slate-400 italic">Soma total do mês de todos os clientes integrados.</p>
-                            </div>
-                        </div>
 
-                        <div className="flex items-center gap-4">
-                            <div className="bg-emerald-500/10 border border-emerald-500/20 px-3 py-1 rounded-full flex items-center gap-2">
-                                <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
-                                <span className="text-[10px] font-black text-emerald-500 tracking-wider uppercase">
-                                    {areValuesHidden ? '??' : highWatermark.count} TRANSAÇÕES
-                                </span>
-                            </div>
-                            <button 
-                                onClick={() => fetchAllDigitalStats(true)} 
-                                disabled={isDigitalLoading}
-                                className={`p-2 rounded-full transition-all ${isDigitalLoading ? 'animate-spin bg-slate-100 dark:bg-slate-700' : 'bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600'}`}
-                            >
-                                <svg className="w-6 h-6 text-slate-600 dark:text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
-                            </button>
-                        </div>
-                    </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
-                         {/* Card de Faturamento Total */}
-                        <div className="bg-amber-400 dark:bg-amber-500 p-4 rounded-xl shadow-md border border-amber-300 dark:border-amber-400 flex flex-col justify-center">
-                            <span className="text-[10px] font-black text-amber-900/60 uppercase tracking-tighter">TOTAL FATURADO</span>
-                            <div className="text-2xl font-black text-amber-950 flex items-baseline gap-1">
-                                <span className="text-base opacity-50">R$</span>
-                                {areValuesHidden ? '••••,••' : (highWatermark.pix + highWatermark.credit + highWatermark.debit - highWatermark.refunds).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                            </div>
-                        </div>
-
-                        {/* PIX */}
-                        <div className="bg-slate-50 dark:bg-slate-900/50 p-4 rounded-xl border border-slate-200 dark:border-slate-700">
-                             <span className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-tighter">PIX</span>
-                             <div className="text-xl font-black text-emerald-500 font-mono">
-                                {areValuesHidden ? 'R$ •••' : `R$ ${highWatermark.pix.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`}
-                             </div>
-                        </div>
-
-                        {/* CRÉDITO */}
-                        <div className="bg-slate-50 dark:bg-slate-900/50 p-4 rounded-xl border border-slate-200 dark:border-slate-700">
-                             <span className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-tighter">C. CRÉDITO</span>
-                             <div className="text-xl font-black text-fuchsia-500 font-mono">
-                                {areValuesHidden ? 'R$ •••' : `R$ ${highWatermark.credit.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`}
-                             </div>
-                        </div>
-
-                        {/* DÉBITO */}
-                        <div className="bg-slate-50 dark:bg-slate-900/50 p-4 rounded-xl border border-slate-200 dark:border-slate-700">
-                             <span className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-tighter">C. DÉBITO</span>
-                             <div className="text-xl font-black text-sky-500 font-mono">
-                                {areValuesHidden ? 'R$ •••' : `R$ ${highWatermark.debit.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`}
-                             </div>
-                        </div>
-
-                        {/* ESTORNOS */}
-                        <div className="bg-red-500/5 dark:bg-red-500/10 p-4 rounded-xl border border-red-500/20">
-                             <span className="text-[10px] font-black text-red-700 dark:text-red-400 uppercase tracking-tighter">ESTORNOS</span>
-                             <div className="text-xl font-black text-red-500 font-mono">
-                                {areValuesHidden ? 'R$ •••' : `R$ ${highWatermark.refunds.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`}
-                             </div>
-                        </div>
-                    </div>
-                </div>
-
-            </div>
-             <div className="mt-6 sm:mt-8">
-                <WarningsManager 
-                    customers={customers}
-                    warnings={warnings}
-                    onAddWarning={onAddWarning}
-                    onResolveWarning={onResolveWarning}
-                    onDeleteWarning={onDeleteWarning}
-                />
             </div>
         </div>
     );

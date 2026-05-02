@@ -295,26 +295,26 @@ const RelatoriosView: React.FC<RelatoriosViewProps> = ({ customers, billings, ex
         const periodExpensesJukebox = periodExpenses.filter(e => e.category === 'jukebox').reduce((sum, e) => sum + e.amount, 0);
         const periodExpensesGrua = periodExpenses.filter(e => e.category === 'grua').reduce((sum, e) => sum + e.amount, 0);
         
-        // Revenue for Mesas (billings + debts)
+        // Revenue for Mesas (billings + debts not linked to billing)
         const revenueMesaDinheiro = periodMesaBillings.reduce((sum, b) => sum + (b.valorPagoDinheiro || 0), 0) + 
-                                   periodMesaDebts.reduce((sum, p) => sum + (p.amountPaidDinheiro || 0), 0);
+                                   periodMesaDebts.filter(p => !p.billingId).reduce((sum, p) => sum + (p.amountPaidDinheiro || 0), 0);
         const revenueMesaPix = periodMesaBillings.reduce((sum, b) => sum + (b.valorPagoPix || 0), 0) +
-                               periodMesaDebts.reduce((sum, p) => sum + (p.amountPaidPix || 0), 0);
+                               periodMesaDebts.filter(p => !p.billingId).reduce((sum, p) => sum + (p.amountPaidPix || 0), 0);
         
-        // Revenue for Jukebox (billings + debts)
+        // Revenue for Jukebox (billings + debts not linked to billing)
         const revenueJukeboxDinheiro = periodJukeboxBillings.reduce((sum, b) => sum + (b.valorPagoDinheiro || 0), 0) +
-                                      periodJukeboxDebts.reduce((sum, p) => sum + (p.amountPaidDinheiro || 0), 0);
+                                      periodJukeboxDebts.filter(p => !p.billingId).reduce((sum, p) => sum + (p.amountPaidDinheiro || 0), 0);
         const revenueJukeboxPix = periodJukeboxBillings.reduce((sum, b) => sum + (b.valorPagoPix || 0), 0) +
-                                  periodJukeboxDebts.reduce((sum, p) => sum + (p.amountPaidPix || 0), 0);
+                                  periodJukeboxDebts.filter(p => !p.billingId).reduce((sum, p) => sum + (p.amountPaidPix || 0), 0);
 
-        // Revenue for Gruas (billings + debts)
+        // Revenue for Gruas (billings + debts not linked to billing)
         const revenueGruaPix = periodGruaBillings.reduce((sum, b) => sum + (b.recebimentoPix || 0), 0) +
-                               periodGruaDebts.reduce((sum, p) => sum + (p.amountPaidPix || 0), 0);
+                               periodGruaDebts.filter(p => !p.billingId).reduce((sum, p) => sum + (p.amountPaidPix || 0), 0);
         const revenueGruaEspecie = periodGruaBillings.reduce((sum, b) => sum + (b.recebimentoEspecie || 0), 0) +
-                                 periodGruaDebts.reduce((sum, p) => sum + (p.amountPaidDinheiro || 0), 0);
+                                 periodGruaDebts.filter(p => !p.billingId).reduce((sum, p) => sum + (p.amountPaidDinheiro || 0), 0);
         const totalAluguelPagoGrua = periodGruaBillings.reduce((sum, b) => sum + (b.aluguelValor || 0), 0);
-        const revenueGruaFirma = periodGruaBillings.reduce((sum, b) => sum + b.valorTotal, 0) +
-                                periodGruaDebts.reduce((sum, p) => sum + p.amountPaid, 0);
+        const revenueGruaFirma = periodGruaBillings.reduce((sum, b) => sum + (b.recebimentoEspecie || 0) + (b.recebimentoPix || 0), 0) +
+                                periodGruaDebts.filter(p => !p.billingId).reduce((sum, p) => sum + p.amountPaid, 0);
         
         // Filtered expenses for the new report
         const filteredPeriodExpenses = periodExpenses.filter(e => {
@@ -455,7 +455,7 @@ const RelatoriosView: React.FC<RelatoriosViewProps> = ({ customers, billings, ex
         return;
     }
     const data = [...stats.periodMesaBillings].sort((a, b) => new Date(b.settledAt).getTime() - new Date(a.settledAt).getTime());
-    const debtData = stats.periodDebtPayments.filter(p => p.equipmentType === 'mesa').sort((a, b) => new Date(b.paidAt).getTime() - new Date(a.paidAt).getTime());
+    const debtData = stats.periodDebtPayments.filter(p => p.equipmentType === 'mesa' && !p.billingId).sort((a, b) => new Date(b.paidAt).getTime() - new Date(a.paidAt).getTime());
     const customerMap = new Map<string, Customer>(customers.map(c => [c.id, c]));
     const revenueMesaTotal = stats.revenueMesaDinheiro + stats.revenueMesaPix;
 
@@ -496,8 +496,9 @@ const RelatoriosView: React.FC<RelatoriosViewProps> = ({ customers, billings, ex
         <tbody>
           ${data.length > 0 ? data.map(b => {
              const customer = customerMap.get(b.customerId);
-             let transactionRevenue = (b.valorPagoDinheiro || 0) + (b.valorPagoPix || 0);
-             return `<tr><td>${new Date(b.settledAt).toLocaleDateString('pt-BR')}</td><td class="text-left">${b.customerName}</td><td class="text-left">${customer?.cidade || 'N/A'}</td><td class="currency">${b.relogioAnterior}</td><td class="currency">${b.relogioAtual}</td><td class="currency">${b.partidasJogadas}</td><td class="text-left" style="font-size: 8pt;">Din: R$${(b.valorPagoDinheiro || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}<br>Pix: R$${(b.valorPagoPix || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td><td class="currency">R$ ${transactionRevenue.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td></tr>`;
+             const transactionRevenue = (b.valorPagoDinheiro || 0) + (b.valorPagoPix || 0);
+             const firmShare = transactionRevenue - (b.valorDividaPaga || 0);
+             return `<tr><td>${new Date(b.settledAt).toLocaleDateString('pt-BR')}</td><td class="text-left">${b.customerName}</td><td class="text-left">${customer?.cidade || 'N/A'}</td><td class="currency">${b.relogioAnterior}</td><td class="currency">${b.relogioAtual}</td><td class="currency">${b.partidasJogadas}</td><td class="text-left" style="font-size: 8pt;">Din: R$${(b.valorPagoDinheiro || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}<br>Pix: R$${(b.valorPagoPix || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td><td class="currency">R$ ${firmShare.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}${b.valorDividaPaga ? `<br><span style="font-size: 7.5pt; color: #0369a1;">+ R$ ${b.valorDividaPaga.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} Dívida</span>` : ''}${b.valorBonus ? `<br><span style="font-size: 7.5pt; color: #b45309;">- R$ ${b.valorBonus.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} Desconto</span>` : ''}</td></tr>`;
           }).join('') : '<tr><td colspan="8" class="no-records">Nenhuma cobrança no período.</td></tr>'}
         </tbody>
       </table>
@@ -578,10 +579,18 @@ const RelatoriosView: React.FC<RelatoriosViewProps> = ({ customers, billings, ex
         setIsJukeboxReportModalOpen(false);
         return;
     }
-    const data = [...stats.periodJukeboxBillings].sort((a, b) => new Date(b.settledAt).getTime() - new Date(a.settledAt).getTime());
-    const debtData = stats.periodDebtPayments.filter(p => p.equipmentType === 'jukebox').sort((a, b) => new Date(b.paidAt).getTime() - new Date(a.paidAt).getTime());
+    const data = [...stats.periodJukeboxBillings].sort((a, b) => {
+        const dateA = a.settledAt instanceof Date ? a.settledAt : new Date(a.settledAt);
+        const dateB = b.settledAt instanceof Date ? b.settledAt : new Date(b.settledAt);
+        return dateB.getTime() - dateA.getTime();
+    });
+    const debtData = stats.periodDebtPayments.filter(p => p.equipmentType === 'jukebox' && !p.billingId).sort((a, b) => {
+        const dateA = a.paidAt instanceof Date ? a.paidAt : new Date(a.paidAt);
+        const dateB = b.paidAt instanceof Date ? b.paidAt : new Date(b.paidAt);
+        return dateB.getTime() - dateA.getTime();
+    });
     const customerMap = new Map<string, Customer>(customers.map(c => [c.id, c]));
-    const revenueJukeboxTotal = stats.revenueJukeboxDinheiro + stats.revenueJukeboxPix;
+    const revenueJukeboxTotal = (stats.revenueJukeboxDinheiro || 0) + (stats.revenueJukeboxPix || 0);
 
     const content = `
       <style>
@@ -619,8 +628,23 @@ const RelatoriosView: React.FC<RelatoriosViewProps> = ({ customers, billings, ex
         <tbody>
           ${data.length > 0 ? data.map(b => {
             const customer = customerMap.get(b.customerId);
-            let transactionRevenue = (b.valorPagoDinheiro || 0) + (b.valorPagoPix || 0);
-            return `<tr><td>${new Date(b.settledAt).toLocaleDateString('pt-BR')}</td><td class="text-left">${b.customerName}</td><td class="text-left">${customer?.cidade || 'N/A'}</td><td class="currency">${b.relogioAnterior}</td><td class="currency">${b.relogioAtual}</td><td class="text-left" style="font-size: 8pt;">Din: R$${(b.valorPagoDinheiro || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}<br>Pix: R$${(b.valorPagoPix || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td><td class="currency">R$ ${transactionRevenue.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td></tr>`;
+            const transactionRevenue = (b.valorPagoDinheiro || 0) + (b.valorPagoPix || 0);
+            const firmShare = transactionRevenue - (b.valorDividaPaga || 0);
+            const displayDate = b.settledAt ? (b.settledAt instanceof Date ? b.settledAt : new Date(b.settledAt)).toLocaleDateString('pt-BR') : 'N/A';
+            
+            return `<tr>
+              <td>${displayDate}</td>
+              <td class="text-left">${b.customerName}</td>
+              <td class="text-left">${customer?.cidade || 'N/A'}</td>
+              <td class="currency">${b.relogioAnterior}</td>
+              <td class="currency">${b.relogioAtual}</td>
+              <td class="text-left" style="font-size: 8pt;">Din: R$${(b.valorPagoDinheiro || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}<br>Pix: R$${(b.valorPagoPix || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
+              <td class="currency">
+                R$ ${firmShare.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                ${b.valorDividaPaga ? `<br><span style="font-size: 7.5pt; color: #0369a1;">+ R$ ${b.valorDividaPaga.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} Dívida</span>` : ''}
+                ${b.valorBonus ? `<br><span style="font-size: 7.5pt; color: #b45309;">- R$ ${b.valorBonus.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} Desconto</span>` : ''}
+              </td>
+            </tr>`;
           }).join('') : '<tr><td colspan="7" class="no-records">Nenhuma cobrança no período.</td></tr>'}
         </tbody>
       </table>
@@ -636,7 +660,8 @@ const RelatoriosView: React.FC<RelatoriosViewProps> = ({ customers, billings, ex
         <tbody>
           ${debtData.map(p => {
             const customer = customerMap.get(p.customerId);
-            return `<tr><td>${new Date(p.paidAt).toLocaleDateString('pt-BR')}</td><td class="text-left">${p.customerName}</td><td class="text-left">${customer?.cidade || 'N/A'}</td><td class="text-left uppercase">${p.paymentMethod}</td><td class="currency" style="color: #a21caf;">R$ ${p.amountPaid.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td></tr>`;
+            const displayDate = p.paidAt ? (p.paidAt instanceof Date ? p.paidAt : new Date(p.paidAt)).toLocaleDateString('pt-BR') : 'N/A';
+            return `<tr><td>${displayDate}</td><td class="text-left">${p.customerName}</td><td class="text-left">${customer?.cidade || 'N/A'}</td><td class="text-left uppercase">${p.paymentMethod}</td><td class="currency" style="color: #a21caf;">R$ ${p.amountPaid.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td></tr>`;
           }).join('')}
         </tbody>
         <tfoot>
@@ -728,7 +753,7 @@ const RelatoriosView: React.FC<RelatoriosViewProps> = ({ customers, billings, ex
     const totalSaldoBruto = data.reduce((sum, b) => sum + (b.saldo || 0), 0);
     const totalAluguelCliente = data.reduce((sum, b) => sum + (b.aluguelValor || 0), 0);
     const totalDebtPaid = debtData.reduce((sum, p) => sum + p.amountPaid, 0);
-    const totalValorFirma = data.reduce((sum, b) => sum + b.valorTotal, 0) + totalDebtPaid;
+    const totalValorFirma = data.reduce((sum, b) => sum + (b.recebimentoEspecie || 0) + (b.recebimentoPix || 0), 0) + totalDebtPaid;
 
     const totalReposicao = data.reduce((sum, b) => sum + (b.reposicaoPelucia || 0), 0);
     const totalEspecie = data.reduce((sum, b) => sum + (b.recebimentoEspecie || 0), 0) + debtData.reduce((s, p) => s + (p.amountPaidDinheiro || 0), 0);
@@ -777,9 +802,10 @@ const RelatoriosView: React.FC<RelatoriosViewProps> = ({ customers, billings, ex
           ${data.length > 0 ? data.map(b => {
             const customer = customerMap.get(b.customerId);
             const cidade = customer ? customer.cidade : 'N/A';
+            const actualReceived = (b.recebimentoEspecie || 0) + (b.recebimentoPix || 0);
             return `
             <tr>
-              <td class="text-left">${b.customerName}</td> <td class="text-left">${cidade}</td> <td>${b.equipmentNumero}</td> <td class="currency">${b.relogioAnterior}</td> <td class="currency">${b.relogioAtual}</td> <td class="currency">R$ ${(b.saldo || 0).toFixed(2)}</td> <td class="currency">R$ ${(b.aluguelValor || 0).toFixed(2)}</td> <td class="currency">R$ ${b.valorTotal.toFixed(2)}</td> <td class="currency">R$ ${(b.recebimentoEspecie || 0).toFixed(2)}</td> <td class="currency">R$ ${(b.recebimentoPix || 0).toFixed(2)}</td>
+              <td class="text-left">${b.customerName}</td> <td class="text-left">${cidade}</td> <td>${b.equipmentNumero}</td> <td class="currency">${b.relogioAnterior}</td> <td class="currency">${b.relogioAtual}</td> <td class="currency">R$ ${(b.saldo || 0).toFixed(2)}</td> <td class="currency">R$ ${(b.aluguelValor || 0).toFixed(2)}</td> <td class="currency">R$ ${actualReceived.toFixed(2)}</td> <td class="currency">R$ ${(b.recebimentoEspecie || 0).toFixed(2)}</td> <td class="currency">R$ ${(b.recebimentoPix || 0).toFixed(2)}</td>
             </tr>
             `;
           }).join('') : '<tr><td colspan="10" class="no-records">Nenhuma cobrança no período.</td></tr>'}
@@ -827,7 +853,7 @@ const RelatoriosView: React.FC<RelatoriosViewProps> = ({ customers, billings, ex
     const start = new Date(startDate + 'T00:00:00');
     const end = new Date(endDate + 'T23:59:59');
     
-    const gruaDebts = debtPayments.filter(p => p.equipmentType === 'grua' && new Date(p.paidAt) >= start && new Date(p.paidAt) <= end);
+    const gruaDebts = debtPayments.filter(p => p.equipmentType === 'grua' && !p.billingId && new Date(p.paidAt) >= start && new Date(p.paidAt) <= end);
     const totalDebts = gruaDebts.reduce((s, p) => s + p.amountPaid, 0);
 
     const reportExpenses = expenses
@@ -836,15 +862,19 @@ const RelatoriosView: React.FC<RelatoriosViewProps> = ({ customers, billings, ex
 
     const data = billings
       .filter(b => b.equipmentType === 'grua' && new Date(b.settledAt) >= start && new Date(b.settledAt) <= end)
-      .sort((a, b) => new Date(b.settledAt).getTime() - new Date(a.settledAt).getTime());
+      .sort((a, b) => new Date(b.settledAt).getTime() - new Date(a.settledAt).getTime())
+      .map(b => ({
+          ...b,
+          actualReceived: (b.recebimentoEspecie || 0) + (b.recebimentoPix || 0)
+      }));
 
-    const totalValorFirma = data.reduce((sum, b) => sum + b.valorTotal, 0) + totalDebts;
+    const totalValorFirma = data.reduce((sum, b) => sum + b.actualReceived, 0) + totalDebts;
     const lucroFinal = totalValorFirma - reportExpenses;
 
     const columns: ReportColumn[] = [
       { header: 'Cliente', accessor: 'customerName', className: 'text-left w-2/5' },
       { header: 'Bruto', accessor: 'saldo', className: 'text-right', render: (val) => `R$${(val || 0).toFixed(2)}` },
-      { header: 'Firma', accessor: 'valorTotal', className: 'text-right', render: (val) => `R$${val.toFixed(2)}` },
+      { header: 'Firma', accessor: 'actualReceived', className: 'text-right', render: (val) => `R$${val.toFixed(2)}` },
     ];
 
     const summary = [

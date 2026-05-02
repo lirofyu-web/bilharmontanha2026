@@ -19,7 +19,6 @@ export interface Customer {
     debtAmount: number;
     lastVisitedAt: Date | null;
     pendingPayment?: boolean;
-    mercadoPagoStoreId?: string;
     pontoReferencia?: string;
 }
 
@@ -44,7 +43,6 @@ export interface Equipment {
     porcentagemJukeboxCliente?: number;
     quantidadePelucia?: number;
     serialNumber?: string;
-    herokuId?: string;
 }
 
 export interface Billing {
@@ -113,6 +111,7 @@ export interface DebtPayment {
     amountPaidPix?: number;
     amountPaidCartao?: number;
     equipmentType: 'mesa' | 'jukebox' | 'grua';
+    billingId?: string;
 }
 
 export interface Warning {
@@ -132,7 +131,7 @@ export interface Route {
     createdAt: Date;
 }
 
-export type View = 'DASHBOARD' | 'CLIENTES' | 'COBRANCAS' | 'DESPESAS' | 'ROTAS' | 'RELATORIOS' | 'CONFIGURACOES' | 'INDUSTRIAL' | 'MAQUINAS';
+export type View = 'DASHBOARD' | 'CLIENTES' | 'COBRANCAS' | 'DESPESAS' | 'ROTAS' | 'RELATORIOS' | 'CONFIGURACOES' | 'INDUSTRIAL';
 
 export type Theme = 'light' | 'dark';
 
@@ -154,6 +153,4 @@ export interface UserProfile {
     createdAt: Date;
     privacyPinHash: string;
     pixKeys?: PixKey[];
-    mercadoPagoToken?: string;
-    mercadoPagoStoreId?: string;
 }

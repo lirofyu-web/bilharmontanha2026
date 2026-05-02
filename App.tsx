@@ -58,8 +58,7 @@ import PendingPaymentActionModal from './components/PendingPaymentActionModal';
 import RouteCreationModal from './components/RouteCreationModal';
 import PrintableCustomerSheetView from './components/PrintableCustomerSheetView';
 import IndustrialView from './views/IndustrialView';
-import DigitalBillingModal from './components/DigitalBillingModal';
-import { HerokuNativeDashboard } from './components/HerokuNativeDashboard';
+
 import WarningsManager from './components/WarningsManager';
 import LoadingScreen from './components/LoadingScreen';
 
@@ -72,7 +71,6 @@ const viewTitles: Record<View, string> = {
     'RELATORIOS': 'Relatórios',
     'CONFIGURACOES': 'Configurações',
     'INDUSTRIAL': 'Modo Industrial',
-    'MAQUINAS': 'PIX MONTANHA',
 };
 
 const generatePrintableHtml = (title: string, content: string): string => {
@@ -145,7 +143,23 @@ const App: React.FC = () => {
     const [debtPaymentsState, setDebtPaymentsState] = useState<DebtPayment[]>([]); // Added to track locally if needed, but the effect uses setDebtPayments
     const [warnings, setWarnings] = useState<Warning[]>([]);
     const [routes, setRoutes] = useState<Route[]>([]);
-    const [deletedCustomersLog, setDeletedCustomersLog] = useState<{ customer: Customer, deletedAt: Date }[]>([]);
+    const [deletedCustomersLog, setDeletedCustomersLog] = useState<{ customer: Customer, deletedAt: Date }[]>(() => {
+        try {
+            const stored = localStorage.getItem('deletedCustomersLog');
+            if (!stored) return [];
+            const parsed: { customer: Customer, deletedAt: string }[] = JSON.parse(stored);
+            // Only keep entries from the current month
+            const now = new Date();
+            return parsed
+                .filter(entry => {
+                    const d = new Date(entry.deletedAt);
+                    return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
+                })
+                .map(entry => ({ ...entry, deletedAt: new Date(entry.deletedAt) }));
+        } catch {
+            return [];
+        }
+    });
     
     const [currentView, setCurrentView] = useState<View>(() => (localStorage.getItem('lastActiveView') as View) || 'DASHBOARD');
     
@@ -218,10 +232,8 @@ const App: React.FC = () => {
     }, [isIndustrialMode]);
 
     // Digital Billing Modal State
-    const [digitalBillingModalState, setDigitalBillingModalState] = useState<{ isOpen: boolean; customer: Customer | null }>({ isOpen: false, customer: null });
 
-    // Heroku Dashboard State
-    const [herokuDashboardState, setHerokuDashboardState] = useState<{ isOpen: boolean; herokuId: string; machineName: string; customerMpStoreId?: string }>({ isOpen: false, herokuId: '', machineName: '' });
+
 
     // Saving state for UI feedback
     const [isSaving, setIsSaving] = useState(false);
@@ -306,10 +318,7 @@ const App: React.FC = () => {
       return () => window.removeEventListener('popstate', handleBackButton);
     }, [currentView, showNotification]);
 
-    useEffect(() => {
-        const path = window.location.pathname;
-        if (path === '/dashboard-maquinas' || path === '/maquinas') setCurrentView('MAQUINAS');
-    }, []);
+
 
     useEffect(() => {
         // Fallback: If industrial mode is off but we are stuck on INDUSTRIAL view, return to Dashboard
@@ -326,8 +335,7 @@ const App: React.FC = () => {
         
         localStorage.setItem('lastActiveView', currentView);
         if (!isIndustrialMode) {
-            const path = currentView === 'MAQUINAS' ? '/dashboard-maquinas' : 
-                         currentView === 'DASHBOARD' ? '/' : `/${currentView.toLowerCase()}`;
+            const path = currentView === 'DASHBOARD' ? '/' : `/${currentView.toLowerCase()}`;
             window.history.replaceState({}, '', path);
         }
     }, [currentView, isIndustrialMode]);
@@ -727,7 +735,11 @@ const App: React.FC = () => {
         const originalCustomers = customers;
     
         setCustomers(prev => prev.filter(c => c.id !== customerToDelete.id));
-        setDeletedCustomersLog(prev => [...prev, { customer: customerToDelete, deletedAt: new Date() }]);
+        setDeletedCustomersLog(prev => {
+            const newLog = [...prev, { customer: customerToDelete, deletedAt: new Date() }];
+            try { localStorage.setItem('deletedCustomersLog', JSON.stringify(newLog)); } catch {}
+            return newLog;
+        });
         setDeleteModalState({ isOpen: false, customer: null });
     
         try {
@@ -739,7 +751,11 @@ const App: React.FC = () => {
         } catch (error) {
             showNotification('Erro ao excluir cliente. Alteração desfeita.', 'error');
             setCustomers(originalCustomers);
-            setDeletedCustomersLog(prev => prev.filter(log => log.customer.id !== customerToDelete.id));
+            setDeletedCustomersLog(prev => {
+                const reverted = prev.filter(log => log.customer.id !== customerToDelete.id);
+                try { localStorage.setItem('deletedCustomersLog', JSON.stringify(reverted)); } catch {}
+                return reverted;
+            });
             console.error(error);
         } finally {
             setIsSaving(false);
@@ -763,8 +779,9 @@ const App: React.FC = () => {
             e.id === billing.equipmentId ? { ...e, relogioAnterior: billing.relogioAtual } : e
         );
         
-        const debtToAdd = billing.paymentMethod === 'pending_payment' ? 0 : (billing.valorDebitoNegativo || 0);
-        const debtPaid = billing.valorDividaPaga || 0;
+        const isGrua = billing.equipmentType === 'grua';
+        const debtToAdd = (billing.paymentMethod === 'pending_payment' || isGrua) ? 0 : (billing.valorDebitoNegativo || 0);
+        const debtPaid = isGrua ? 0 : (billing.valorDividaPaga || 0);
 
         const updatedCustomerData = {
             equipment: updatedEquipment,
@@ -789,15 +806,20 @@ const App: React.FC = () => {
             batch.update(doc(db, `users/${user.uid}/customers`, customerId), firestoreCustomerPayload);
 
             if (debtPaid > 0) {
-                const debtPaymentId = uuidv4();
+                const totalPaid = (billing.valorPagoDinheiro || 0) + (billing.valorPagoPix || 0);
+                const ratio = totalPaid > 0 ? debtPaid / totalPaid : 0;
+                
                 const debtPayment: DebtPayment = {
-                    id: debtPaymentId,
+                    id: uuidv4(),
                     customerId: billing.customerId,
                     customerName: billing.customerName,
                     amountPaid: debtPaid,
                     paidAt: new Date(),
-                    paymentMethod: billing.paymentMethod === 'debito_negativo' ? 'dinheiro' : (billing.paymentMethod as any), // Fallback if necessary
-                    equipmentType: billing.equipmentType
+                    paymentMethod: billing.paymentMethod === 'debito_negativo' ? 'dinheiro' : (billing.paymentMethod as any),
+                    amountPaidDinheiro: parseFloat(((billing.valorPagoDinheiro || 0) * ratio).toFixed(2)),
+                    amountPaidPix: parseFloat(((billing.valorPagoPix || 0) * ratio).toFixed(2)),
+                    equipmentType: billing.equipmentType,
+                    billingId: billingId
                 };
                 const { id: dId, ...debtPayload } = debtPayment;
                 batch.set(doc(db, `users/${user.uid}/debtPayments`, dId), processPayloadForFirestore(debtPayload));
@@ -843,15 +865,19 @@ const App: React.FC = () => {
             return;
         }
 
-        const oldDebtChange = oldBilling.valorDebitoNegativo || 0;
-        const newDebtChange = billing.valorDebitoNegativo || 0;
-        const debtDifference = newDebtChange - oldDebtChange;
+        const isGrua = billing.equipmentType === 'grua';
+        const oldDebtChange = (oldBilling.equipmentType === 'grua' ? 0 : (oldBilling.valorDebitoNegativo || 0));
+        const newDebtChange = isGrua ? 0 : (billing.valorDebitoNegativo || 0);
+        const oldDebtPaid = (oldBilling.equipmentType === 'grua' ? 0 : (oldBilling.valorDividaPaga || 0));
+        const newDebtPaid = isGrua ? 0 : (billing.valorDividaPaga || 0);
+        
+        const debtDifference = (newDebtChange - oldDebtChange) - (newDebtPaid - oldDebtPaid);
         
         const nextBillingForEquipment = billings
             .filter(b => b.equipmentId === billing.equipmentId && new Date(b.settledAt) > new Date(billing.settledAt))
             .sort((a,b) => new Date(a.settledAt).getTime() - new Date(b.settledAt).getTime())[0];
 
-        const updatedCustomer = { ...customerToUpdate, debtAmount: customerToUpdate.debtAmount + debtDifference };
+        const updatedCustomer = { ...customerToUpdate, debtAmount: (customerToUpdate.debtAmount || 0) + debtDifference };
         setCustomers(prev => prev.map(c => c.id === updatedCustomer.id ? updatedCustomer : c));
         setBillings(prev => prev.map(b => b.id === billing.id ? billing : b));
         setEditBillingModalState({ isOpen: false, billing: null });
@@ -902,21 +928,33 @@ const App: React.FC = () => {
         if (!customerToUpdate) return;
         
         const restoredRelogioAnterior = billingToDelete.relogioAnterior;
-        const debtToRemove = billingToDelete.valorDebitoNegativo || 0;
-        const debtToRestore = billingToDelete.valorDividaPaga || 0;
+        const isGrua = billingToDelete.equipmentType === 'grua';
+        const debtToRemove = isGrua ? 0 : (billingToDelete.valorDebitoNegativo || 0);
+        const debtToRestore = isGrua ? 0 : (billingToDelete.valorDividaPaga || 0);
+        
         const updatedCustomerPayload = { 
             debtAmount: (customerToUpdate.debtAmount || 0) - debtToRemove + debtToRestore, 
             equipment: customerToUpdate.equipment.map(e => e.id === billingToDelete.equipmentId ? { ...e, relogioAnterior: restoredRelogioAnterior } : e) 
         };
         const updatedCustomer = { ...customerToUpdate, ...updatedCustomerPayload };
     
+        const associatedDebtPayments = debtPayments.filter(p => p.billingId === billingId);
+    
         setBillings(prev => prev.filter(b => b.id !== billingId));
         setCustomers(prev => prev.map(c => c.id === updatedCustomer.id ? updatedCustomer : c));
+        if (associatedDebtPayments.length > 0) {
+            setDebtPayments(prev => prev.filter(p => p.billingId !== billingId));
+        }
         
         try {
             const batch = writeBatch(db);
             batch.delete(doc(db, `users/${user.uid}/billings`, billingId));
             batch.update(doc(db, `users/${user.uid}/customers`, updatedCustomer.id), processPayloadForFirestore(updatedCustomerPayload));
+            
+            associatedDebtPayments.forEach(p => {
+                batch.delete(doc(db, `users/${user.uid}/debtPayments`, p.id));
+            });
+
             batch.commit().catch(e => console.error('bg sync err:', e));
 
             playSuccessSound();
@@ -1257,10 +1295,7 @@ const App: React.FC = () => {
         };
     }, [user, userProfile]);
 
-    // --- Digital Billing Modal ---
-    const handleOpenDigitalBilling = useCallback((customer: Customer) => {
-        setDigitalBillingModalState({ isOpen: true, customer });
-    }, []);
+
 
     // --- Heroku Dashboard ---
     const handleOpenEsp32Dashboard = useCallback((herokuId: string, machineName: string, customerMpStoreId?: string) => {
@@ -1321,15 +1356,20 @@ const App: React.FC = () => {
             batch.update(doc(db, `users/${user.uid}/customers`, customerId), firestoreCustomerPayload);
 
             if (debtPaid > 0) {
-                const debtPaymentId = uuidv4();
+                const totalPaid = (updatedBilling.valorPagoDinheiro || 0) + (updatedBilling.valorPagoPix || 0);
+                const ratio = totalPaid > 0 ? debtPaid / totalPaid : 0;
+
                 const debtPayment: DebtPayment = {
-                    id: debtPaymentId,
+                    id: uuidv4(),
                     customerId: updatedBilling.customerId,
                     customerName: updatedBilling.customerName,
                     amountPaid: debtPaid,
                     paidAt: new Date(),
                     paymentMethod: updatedBilling.paymentMethod === 'debito_negativo' ? 'dinheiro' : (updatedBilling.paymentMethod as any),
-                    equipmentType: updatedBilling.equipmentType
+                    amountPaidDinheiro: parseFloat(((updatedBilling.valorPagoDinheiro || 0) * ratio).toFixed(2)),
+                    amountPaidPix: parseFloat(((updatedBilling.valorPagoPix || 0) * ratio).toFixed(2)),
+                    equipmentType: updatedBilling.equipmentType,
+                    billingId: billingId
                 };
                 const { id: dId, ...debtPayload } = debtPayment;
                 batch.set(doc(db, `users/${user.uid}/debtPayments`, dId), processPayloadForFirestore(debtPayload));
@@ -1740,8 +1780,9 @@ const App: React.FC = () => {
             SheetComponent = <DebtStatementSheet customer={(receiptData as any).customer} qrCodeDataUrl={qrCodeDataUrl} pixKeyName={pixKeyName} />
         } else if ('settledAt' in receiptData) {
             const billing = receiptData as Billing;
+            const customer = customers.find(c => c.id === billing.customerId);
             title = `Comprovante - ${billing.customerName}`;
-            SheetComponent = <ReceiptSheet billing={billing} qrCodeDataUrl={qrCodeDataUrl} pixKeyName={pixKeyName} />;
+            SheetComponent = <ReceiptSheet billing={billing} qrCodeDataUrl={qrCodeDataUrl} pixKeyName={pixKeyName} previousDebt={customer?.debtAmount} isProvisional={receiptActionsModalState.isProvisional} />;
         } else {
             const debtPayment = receiptData as DebtPayment;
             title = `Recibo de Dívida - ${debtPayment.customerName}`;
@@ -1809,16 +1850,14 @@ const App: React.FC = () => {
                             }
                         }} 
                         onPayDebtCustomer={handleOpenDebtPaymentModal} 
-                        onOpenDigitalBilling={handleOpenDigitalBilling} 
-                        onOpenEsp32Dashboard={(id, name, storeId) => setHerokuDashboardState({ isOpen: true, herokuId: id, machineName: name, customerMpStoreId: storeId })} 
                         onResolveWarning={handleResolveWarning} 
                         onPrintDebtStatement={(customer) => handlePrintPdfReceipt({ type: 'debt-statement', customer })} 
                     />;
         }
 
         switch (currentView) {
-            case 'DASHBOARD': return <DashboardView billings={billings} expenses={expenses} customers={customers} debtPayments={debtPayments} warnings={warnings} onAddWarning={handleAddWarning} onResolveWarning={handleResolveWarning} onDeleteWarning={handleDeleteWarning} lastBackupDate={lastBackupTimestamp} onExportData={handleExportData} onNavigateToSettings={() => setView('CONFIGURACOES')} areValuesHidden={areValuesHidden} deletedCustomersLog={deletedCustomersLog} mercadoPagoToken={userProfile?.mercadoPagoToken} onOpenEsp32Dashboard={handleOpenEsp32Dashboard} />;
-            case 'CLIENTES': return <ClientesView customers={customers} warnings={warnings} billings={billings} routes={routes} onAddCustomer={handleAddCustomer} onUpdateCustomer={handleUpdateCustomerPartial} isSaving={isSaving} showNotification={showNotification} onFichaActions={handleOpenFichaActionsModal} onBillCustomer={handleOpenBillingModal} onEditCustomer={handleOpenEditCustomerModal} onDeleteCustomer={handleOpenDeleteModal} onPayDebtCustomer={handleOpenDebtPaymentModal} onOpenFastBilling={() => setIsFastBillingModalOpen(true)} onLocationActions={handleOpenLocationActions} onWhatsAppActions={handleWhatsAppActions} onFinalizePendingPayment={(billing) => setFinalizePaymentModalState({ isOpen: true, billing })} areValuesHidden={areValuesHidden} onPendingPaymentAction={(customer, billing) => setPendingPaymentActionModalState({ isOpen: true, customer, pendingBilling: billing })} onOpenRouteCreator={() => setIsRouteCreationModalOpen(true)} onSaveRoute={handleSaveRoute} onDeleteRoute={handleDeleteRoute} onOpenDigitalBilling={handleOpenDigitalBilling} onOpenEsp32Dashboard={handleOpenEsp32Dashboard} />;
+            case 'DASHBOARD': return <DashboardView billings={billings} expenses={expenses} customers={customers} debtPayments={debtPayments} warnings={warnings} lastBackupDate={lastBackupTimestamp} onExportData={handleExportData} onNavigateToSettings={() => setView('CONFIGURACOES')} areValuesHidden={areValuesHidden} deletedCustomersLog={deletedCustomersLog}  />;
+            case 'CLIENTES': return <ClientesView customers={customers} warnings={warnings} billings={billings} routes={routes} onAddCustomer={handleAddCustomer} onUpdateCustomer={handleUpdateCustomerPartial} isSaving={isSaving} showNotification={showNotification} onFichaActions={handleOpenFichaActionsModal} onBillCustomer={handleOpenBillingModal} onEditCustomer={handleOpenEditCustomerModal} onDeleteCustomer={handleOpenDeleteModal} onPayDebtCustomer={handleOpenDebtPaymentModal} onOpenFastBilling={() => setIsFastBillingModalOpen(true)} onLocationActions={handleOpenLocationActions} onWhatsAppActions={handleWhatsAppActions} onFinalizePendingPayment={(billing) => setFinalizePaymentModalState({ isOpen: true, billing })} areValuesHidden={areValuesHidden} onPendingPaymentAction={(customer, billing) => setPendingPaymentActionModalState({ isOpen: true, customer, pendingBilling: billing })} onOpenRouteCreator={() => setIsRouteCreationModalOpen(true)} onSaveRoute={handleSaveRoute} onDeleteRoute={handleDeleteRoute} onAddWarning={handleAddWarning} onResolveWarning={handleResolveWarning} />;
             case 'COBRANCAS': return <CobrancasView 
                 billings={billings} 
                 customers={customers} 
@@ -1841,19 +1880,8 @@ const App: React.FC = () => {
             case 'ROTAS': return <RotasView customers={customers} warnings={warnings} />;
             case 'RELATORIOS': return <RelatoriosView customers={customers} billings={billings} expenses={expenses} debtPayments={debtPayments} areValuesHidden={areValuesHidden} showNotification={showNotification} />;
             case 'CONFIGURACOES': return <ConfiguracoesView userProfile={userProfile} onUpdateUserProfile={handleUpdateUserProfile} onExportData={handleExportData} onMergeData={handleMergeData} theme={theme} setTheme={setTheme} showNotification={showNotification} deferredPrompt={deferredPrompt} onInstallPrompt={handleInstallPrompt} onDeleteAllData={() => setIsDeleteAllDataModalOpen(true)} onLogout={handleLogout} onSwitchAccount={handleSwitchAccount} onAddNewAccount={handleAddNewAccount} isPrivacyModeEnabled={isPrivacyModeEnabled} onActivatePrivacyMode={handleActivatePrivacyMode} onDeactivatePrivacyMode={handleDeactivatePrivacyMode} isIndustrialMode={isIndustrialMode} onToggleIndustrialMode={handleToggleIndustrialMode} />;
-            case 'MAQUINAS': return (
-                <div className="flex-1 flex flex-col h-full bg-slate-900 overflow-hidden">
-                    <HerokuNativeDashboard 
-                        isOpen={true} 
-                        onClose={() => setCurrentView('DASHBOARD')} 
-                        herokuId={""} 
-                        machineName={"PAINEL GERAL PIX MONTANHA"} 
-                        customerMpStoreId={userProfile?.mercadoPagoStoreId || ""}
-                        mercadoPagoToken={userProfile?.mercadoPagoToken}
-                    />
-                </div>
-            );
-            default: return <DashboardView billings={billings} expenses={expenses} customers={customers} debtPayments={debtPayments} warnings={warnings} onAddWarning={handleAddWarning} onResolveWarning={handleResolveWarning} onDeleteWarning={handleDeleteWarning} lastBackupDate={lastBackupTimestamp} onExportData={handleExportData} onNavigateToSettings={() => setView('CONFIGURACOES')} areValuesHidden={areValuesHidden} deletedCustomersLog={deletedCustomersLog} mercadoPagoToken={userProfile?.mercadoPagoToken} onOpenEsp32Dashboard={handleOpenEsp32Dashboard} />;
+
+            default: return <DashboardView billings={billings} expenses={expenses} customers={customers} debtPayments={debtPayments} warnings={warnings} onAddWarning={handleAddWarning} onResolveWarning={handleResolveWarning} onDeleteWarning={handleDeleteWarning} lastBackupDate={lastBackupTimestamp} onExportData={handleExportData} onNavigateToSettings={() => setView('CONFIGURACOES')} areValuesHidden={areValuesHidden} deletedCustomersLog={deletedCustomersLog} mercadoPagoToken={userProfile?.mercadoPagoToken}  />;
         }
     };
 
@@ -1896,7 +1924,7 @@ const App: React.FC = () => {
                     onPrintStatement={(customer) => handlePrintPdfReceipt({ type: 'debt-statement', customer })}
                 />
             )}
-            {deleteModalState.isOpen && deleteModalState.customer && <ActionModal isOpen={deleteModalState.isOpen} onClose={() => setDeleteModalState({ isOpen: false, customer: null })} onConfirm={() => handleDeleteCustomer(deleteModalState.customer!)} title="Excluir Cliente"><p>Tem certeza? Todos os dados, incluindo histórico de cobranças, serão perdidos.</p></ActionModal>}
+            {deleteModalState.isOpen && deleteModalState.customer && <ActionModal isOpen={deleteModalState.isOpen} onClose={() => setDeleteModalState({ isOpen: false, customer: null })} onConfirm={() => handleDeleteCustomer(deleteModalState.customer!)} title="Excluir Cliente" requirePassword="1678"><p>Tem certeza? Todos os dados, incluindo histórico de cobranças, serão perdidos.</p></ActionModal>}
             {equipmentSelectionModalState.isOpen && equipmentSelectionModalState.customer && <EquipmentSelectionModal isOpen={equipmentSelectionModalState.isOpen} onClose={() => setEquipmentSelectionModalState({ isOpen: false, customer: null })} customer={equipmentSelectionModalState.customer} onSelect={handleSelectEquipmentForBilling} />}
             {receiptActionsModalState.isOpen && receiptActionsModalState.billing && <ReceiptActionsModal isOpen={receiptActionsModalState.isOpen} onClose={() => setReceiptActionsModalState({ isOpen: false, billing: null, isProvisional: false })} billing={receiptActionsModalState.billing} isProvisional={receiptActionsModalState.isProvisional} isSharing={isSharing} onShare={() => handleShareReceipt(receiptActionsModalState.billing!)} onPrint={() => handlePrintPdfReceipt(receiptActionsModalState.billing!)} showNotification={showNotification} />}
             {debtReceiptActionsModalState.isOpen && debtReceiptActionsModalState.debtPayment && <DebtReceiptActionsModal isOpen={debtReceiptActionsModalState.isOpen} onClose={() => setDebtReceiptActionsModalState({ isOpen: false, debtPayment: null, customer: null })} debtPayment={debtReceiptActionsModalState.debtPayment} isSharing={isSharing} onShare={() => handleShareReceipt(debtReceiptActionsModalState.debtPayment!)} onPrint={() => handlePrintPdfReceipt(debtReceiptActionsModalState.debtPayment!)} showNotification={showNotification} />}
@@ -1916,7 +1944,7 @@ const App: React.FC = () => {
                     onViewFicha={handleViewCustomerSheet}
                 />
             )}
-            {isDeleteAllDataModalOpen && <ActionModal isOpen={isDeleteAllDataModalOpen} onClose={() => setIsDeleteAllDataModalOpen(false)} onConfirm={handleDeleteAllData} title="Apagar Todos os Dados" confirmText="Sim, Apagar Tudo"><p className="text-red-400">Esta ação é irreversível. Confirma que deseja apagar todos os dados da sua conta?</p></ActionModal>}
+            {isDeleteAllDataModalOpen && <ActionModal isOpen={isDeleteAllDataModalOpen} onClose={() => setIsDeleteAllDataModalOpen(false)} onConfirm={handleDeleteAllData} title="Apagar Todos os Dados" confirmText="Sim, Apagar Tudo" requirePassword="1678"><p className="text-red-400">Esta ação é irreversível. Confirma que deseja apagar todos os dados da sua conta?</p></ActionModal>}
             {finalizePaymentModalState.isOpen && finalizePaymentModalState.billing && (
                 <FinalizePaymentModal 
                     isOpen={finalizePaymentModalState.isOpen} 
@@ -1926,7 +1954,7 @@ const App: React.FC = () => {
                     customerDebt={customers.find(c => c.id === finalizePaymentModalState.billing?.customerId)?.debtAmount || 0}
                 />
             )}
-            {forgiveDebtModalState.isOpen && forgiveDebtModalState.customer && <ActionModal isOpen={forgiveDebtModalState.isOpen} onClose={() => setForgiveDebtModalState({ isOpen: false, customer: null })} onConfirm={() => handleForgiveDebt(forgiveDebtModalState.customer!)} title="Perdoar Dívida" confirmText="Sim, Perdoar"><p>Tem certeza que deseja zerar a dívida de <strong>{forgiveDebtModalState.customer.name}</strong> no valor de <strong>R$ {forgiveDebtModalState.customer.debtAmount.toFixed(2)}</strong>?</p></ActionModal>}
+            {forgiveDebtModalState.isOpen && forgiveDebtModalState.customer && <ActionModal isOpen={forgiveDebtModalState.isOpen} onClose={() => setForgiveDebtModalState({ isOpen: false, customer: null })} onConfirm={() => handleForgiveDebt(forgiveDebtModalState.customer!)} title="Perdoar Dívida" confirmText="Sim, Perdoar" requirePassword="1678"><p>Tem certeza que deseja zerar a dívida de <strong>{forgiveDebtModalState.customer.name}</strong> no valor de <strong>R$ {forgiveDebtModalState.customer.debtAmount.toFixed(2)}</strong>?</p></ActionModal>}
             {pendingPaymentActionModalState.isOpen && (
                 <PendingPaymentActionModal
                     isOpen={pendingPaymentActionModalState.isOpen}
@@ -1950,25 +1978,6 @@ const App: React.FC = () => {
             {printableCustomerSheet && <PrintableCustomerSheetView customer={printableCustomerSheet} onCancel={() => setPrintableCustomerSheet(null)} showNotification={showNotification} />}
             {actionFeedbackState.isOpen && <ActionFeedbackOverlay isOpen={actionFeedbackState.isOpen} onEnd={handleAnimationEnd} variant={actionFeedbackState.variant} message={!isOnline && actionFeedbackState.message && !actionFeedbackState.message.toLowerCase().includes('offline') ? `${actionFeedbackState.message} (Offline)` : actionFeedbackState.message} />}
 
-            {/* Legacy & Hardware Modals */}
-            {digitalBillingModalState.isOpen && digitalBillingModalState.customer && (
-                <DigitalBillingModal 
-                    isOpen={digitalBillingModalState.isOpen} 
-                    onClose={() => setDigitalBillingModalState({ isOpen: false, customer: null })} 
-                    customer={digitalBillingModalState.customer} 
-                    mercadoPagoToken={userProfile?.mercadoPagoToken}
-                />
-            )}
-            {herokuDashboardState.isOpen && (
-                <HerokuNativeDashboard 
-                    isOpen={herokuDashboardState.isOpen}
-                    onClose={() => setHerokuDashboardState({ isOpen: false, herokuId: '', machineName: '' })}
-                    herokuId={herokuDashboardState.herokuId}
-                    machineName={herokuDashboardState.machineName}
-                    customerMpStoreId={herokuDashboardState.customerMpStoreId}
-                    mercadoPagoToken={userProfile?.mercadoPagoToken}
-                />
-            )}
         </div>
     );
 };

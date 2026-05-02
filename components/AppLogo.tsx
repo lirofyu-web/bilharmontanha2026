@@ -6,13 +6,13 @@ const AppLogo: React.FC = () => {
       {/* Logo para tema claro */}
       <img 
         src="/logo-claro.png" 
-        alt="Montanha Bilhar & Jukebox Logo" 
+        alt="Montanha Gestão Logo" 
         className="h-24 w-auto block dark:hidden" 
       />
       {/* Logo para tema escuro */}
       <img 
         src="/logo-escuro.png" 
-        alt="Montanha Bilhar & Jukebox Logo" 
+        alt="Montanha Gestão Logo" 
         className="h-24 w-auto hidden dark:block"
       />
     </div>

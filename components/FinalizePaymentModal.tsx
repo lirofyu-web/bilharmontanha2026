@@ -16,25 +16,19 @@ const FinalizePaymentModal: React.FC<FinalizePaymentModalProps> = ({ isOpen, onC
   const [paymentValues, setPaymentValues] = useState({
     dinheiro: '',
     pix: '',
-    bonus: '',
-    negativo: '',
-    dividaPaga: '0'
+    desconto: '',
   });
   const [relogioAtual, setRelogioAtual] = useState('');
   const [error, setError] = useState('');
 
-  const valorTotalParaFirma = useMemo(() => billing.valorTotal - (billing.valorBonus || 0), [billing]);
+  const valorTotalParaFirma = useMemo(() => billing.valorTotal, [billing]);
 
   useEffect(() => {
     if (isOpen) {
-      const initialBonus = billing.valorBonus || 0;
-      const valorFinal = billing.valorTotal - initialBonus;
       setPaymentValues({
-        dinheiro: String(valorFinal > 0 ? valorFinal : '0'),
+        dinheiro: String(billing.valorTotal > 0 ? billing.valorTotal : '0'),
         pix: '0',
-        bonus: String(initialBonus > 0 ? initialBonus : ''),
-        negativo: '0',
-        dividaPaga: '0'
+        desconto: '0',
       });
       if (billing.equipmentType === 'jukebox' && billing.relogioAtual > billing.relogioAnterior) {
           setRelogioAtual(String(billing.relogioAtual));
@@ -46,36 +40,31 @@ const FinalizePaymentModal: React.FC<FinalizePaymentModalProps> = ({ isOpen, onC
   }, [isOpen, billing]);
 
   const handlePaymentChange = useCallback((field: keyof typeof paymentValues, value: string) => {
-    setPaymentValues(prev => {
-        const newState = { ...prev, [field]: value };
-        if (field === 'dividaPaga') {
-            const oldVal = parseFloat(prev.dividaPaga || '0') || 0;
-            const newVal = parseFloat(value || '0') || 0;
-            const delta = newVal - oldVal;
-            const currentDinheiro = parseFloat(prev.dinheiro || '0') || 0;
-            newState.dinheiro = String(Math.max(0, parseFloat((currentDinheiro + delta).toFixed(2))));
-        }
-        return newState;
-    });
+    setPaymentValues(prev => ({ ...prev, [field]: value }));
   }, []);
   
-  useEffect(() => {
-    const vBonus = safeParseFloat(paymentValues.bonus);
-    const totalDevido = billing.valorTotal - vBonus;
-    
+  const financialSummary = useMemo(() => {
+    const vTotal = valorTotalParaFirma;
     const vDinheiro = safeParseFloat(paymentValues.dinheiro);
     const vPix = safeParseFloat(paymentValues.pix);
-    const vNegativo = safeParseFloat(paymentValues.negativo);
-    const vDividaPaga = safeParseFloat(paymentValues.dividaPaga);
+    const vDesconto = safeParseFloat(paymentValues.desconto);
+    
+    const totalPago = vDinheiro + vPix;
+    const valorNecessario = vTotal - vDesconto;
+    const saldoTransacao = totalPago - valorNecessario;
+    const novoSaldoDivida = customerDebt - saldoTransacao;
+    
+    return {
+        totalPago,
+        novoSaldoDivida,
+        saldoTransacao,
+        vDesconto
+    };
+  }, [paymentValues.dinheiro, paymentValues.pix, paymentValues.desconto, valorTotalParaFirma, customerDebt]);
 
-    const totalDeclarado = vDinheiro + vPix + vNegativo;
-    const totalExigido = totalDevido + vDividaPaga;
-    const difference = totalDeclarado - totalExigido;
-
+  useEffect(() => {
     let newError = '';
-    if (Math.abs(difference) > 0.01) { // Tolera 1 centavo
-        newError = `Soma (R$ ${totalDeclarado.toFixed(2)}) não bate com Total + Dívida (R$ ${totalExigido.toFixed(2)}).`;
-    } else if (billing.equipmentType === 'jukebox') {
+    if (billing.equipmentType === 'jukebox') {
         const ra = safeParseFloat(relogioAtual);
         if (!relogioAtual) {
             newError = 'Preencha a Leitura Atual.';
@@ -83,9 +72,8 @@ const FinalizePaymentModal: React.FC<FinalizePaymentModalProps> = ({ isOpen, onC
             newError = `Leitura atual (${ra}) não pode ser menor que a anterior (${billing.relogioAnterior}).`;
         }
     }
-
     setError(newError);
-  }, [paymentValues, billing, relogioAtual]);
+  }, [billing, relogioAtual]);
 
 
   const handleConfirm = useCallback(() => {
@@ -93,15 +81,21 @@ const FinalizePaymentModal: React.FC<FinalizePaymentModalProps> = ({ isOpen, onC
     
     const valorPagoDinheiro = safeParseFloat(paymentValues.dinheiro);
     const valorPagoPix = safeParseFloat(paymentValues.pix);
-    const valorDebitoNegativo = safeParseFloat(paymentValues.negativo);
-    const valorBonus = safeParseFloat(paymentValues.bonus);
+    const valorBonus = safeParseFloat(paymentValues.desconto);
+    
+    const totalPago = valorPagoDinheiro + valorPagoPix;
+    const totalParaFirma = valorTotalParaFirma - valorBonus;
+    
+    const difference = totalPago - totalParaFirma;
+    const valorDividaPaga = difference > 0 ? parseFloat(difference.toFixed(2)) : 0;
+    const valorDebitoNegativo = difference < 0 ? parseFloat(Math.abs(difference).toFixed(2)) : 0;
 
     const methodsUsed: ('dinheiro' | 'pix' | 'debito_negativo')[] = [];
     if (valorPagoDinheiro > 0) methodsUsed.push('dinheiro');
     if (valorPagoPix > 0) methodsUsed.push('pix');
     if (valorDebitoNegativo > 0) methodsUsed.push('debito_negativo');
 
-    let paymentMethod: Billing['paymentMethod'] = 'dinheiro'; // Default
+    let paymentMethod: Billing['paymentMethod'] = 'dinheiro'; 
     if (methodsUsed.length > 1) {
         paymentMethod = 'misto';
     } else if (methodsUsed.length === 1) {
@@ -110,13 +104,13 @@ const FinalizePaymentModal: React.FC<FinalizePaymentModalProps> = ({ isOpen, onC
 
     const updatedBilling: Billing = {
         ...billing,
-        settledAt: new Date(), // Update the date to when it was finalized
+        settledAt: new Date(), 
         paymentMethod,
         valorPagoDinheiro: valorPagoDinheiro > 0 ? valorPagoDinheiro : undefined,
         valorPagoPix: valorPagoPix > 0 ? valorPagoPix : undefined,
         valorDebitoNegativo: valorDebitoNegativo > 0 ? valorDebitoNegativo : undefined,
+        valorDividaPaga: valorDividaPaga > 0 ? valorDividaPaga : undefined,
         valorBonus: valorBonus > 0 ? valorBonus : undefined,
-        valorDividaPaga: safeParseFloat(paymentValues.dividaPaga) > 0 ? safeParseFloat(paymentValues.dividaPaga) : undefined,
     };
 
     if (billing.equipmentType === 'jukebox') {
@@ -140,9 +134,15 @@ const FinalizePaymentModal: React.FC<FinalizePaymentModalProps> = ({ isOpen, onC
           <p className="text-slate-400 break-words">Cliente: {billing.customerName}</p>
         </div>
         <div className="p-6 space-y-6 overflow-y-auto flex-grow min-h-0">
-            <div className="text-center">
-                <p className="text-slate-400">Total a Pagar</p>
-                <p className="text-3xl font-mono font-bold text-lime-400">R$ {valorTotalParaFirma.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+            <div className="flex gap-3 mb-6">
+                <div className="flex-1 p-3 bg-slate-900/50 rounded-lg border border-lime-500/20 text-center">
+                    <p className="text-[10px] text-slate-400 uppercase font-bold tracking-wider mb-1">Entrada Hoje</p>
+                    <p className="text-xl font-black text-lime-400 font-mono">R$ {financialSummary.totalPago.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
+                </div>
+                <div className="flex-1 p-3 bg-slate-900/50 rounded-lg border border-red-500/20 text-center">
+                    <p className="text-[10px] text-slate-400 uppercase font-bold tracking-wider mb-1">Saldo Dívida</p>
+                    <p className={`text-xl font-black font-mono ${financialSummary.novoSaldoDivida > 0 ? 'text-red-400' : 'text-slate-400'}`}>R$ {Math.max(0, financialSummary.novoSaldoDivida).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
+                </div>
             </div>
 
             {billing.equipmentType === 'jukebox' && (
@@ -156,30 +156,23 @@ const FinalizePaymentModal: React.FC<FinalizePaymentModalProps> = ({ isOpen, onC
                 </div>
             )}
             
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-3 gap-2">
                 <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-1">Bônus / Desconto (R$)</label>
-                  <input type="text" inputMode="decimal" value={paymentValues.bonus} onChange={(e) => handlePaymentChange('bonus', e.target.value)} className="w-full bg-slate-700 border border-slate-600 rounded-md py-2 px-3 text-white focus:outline-none focus:ring-2 focus:ring-lime-500" />
-                </div>
-                 <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-1">Deixar Negativo (R$)</label>
-                  <input type="text" inputMode="decimal" value={paymentValues.negativo} onChange={(e) => handlePaymentChange('negativo', e.target.value)} className="w-full bg-slate-700 border border-slate-600 rounded-md py-2 px-3 text-white focus:outline-none focus:ring-2 focus:ring-lime-500" />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-1">Valor em Dinheiro (R$)</label>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Dinheiro</label>
                   <input type="text" inputMode="decimal" value={paymentValues.dinheiro} onChange={(e) => handlePaymentChange('dinheiro', e.target.value)} className="w-full bg-slate-700 border border-slate-600 rounded-md py-2 px-3 text-white focus:outline-none focus:ring-2 focus:ring-lime-500" />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-1">Valor em PIX (R$)</label>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">PIX</label>
                   <input type="text" inputMode="decimal" value={paymentValues.pix} onChange={(e) => handlePaymentChange('pix', e.target.value)} className="w-full bg-slate-700 border border-slate-600 rounded-md py-2 px-3 text-white focus:outline-none focus:ring-2 focus:ring-lime-500" />
                 </div>
-                <div className="md:col-span-2 bg-slate-900/40 p-3 rounded-md border border-slate-700/50">
-                  <div className="flex justify-between items-center mb-1">
-                    <label className="block text-sm font-medium text-slate-300">Pagamento de Dívida (R$)</label>
-                    <span className="text-xs text-slate-400">Dívida: <span className="text-red-400 font-bold font-mono">R$ {customerDebt.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span></span>
-                  </div>
-                  <input type="text" inputMode="decimal" value={paymentValues.dividaPaga} onChange={(e) => handlePaymentChange('dividaPaga', e.target.value)} className="w-full bg-slate-700 border border-slate-600 rounded-md py-2 px-3 text-white focus:outline-none focus:ring-2 focus:ring-lime-500" />
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Desconto</label>
+                  <input type="text" inputMode="decimal" value={paymentValues.desconto} onChange={(e) => handlePaymentChange('desconto', e.target.value)} className="w-full bg-slate-700 border border-slate-600 rounded-md py-2 px-3 text-white focus:outline-none focus:ring-2 focus:ring-lime-500" />
                 </div>
+            </div>
+            
+            <div className="p-3 bg-slate-900/40 rounded-lg border border-slate-700/50 text-center">
+                <p className="text-xs text-slate-500 italic">Total Cobrança: R$ {billing.valorTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} | Dívida Antiga: R$ {customerDebt.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
             </div>
             {error && <p className="text-red-400 text-xs mt-1 text-center">{error}</p>}
         </div>

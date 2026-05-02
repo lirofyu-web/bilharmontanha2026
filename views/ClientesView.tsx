@@ -44,12 +44,13 @@ interface ClientesViewProps {
   onWhatsAppActions: (customer: Customer) => void;
   onFinalizePendingPayment: (billing: Billing) => void;
   onPendingPaymentAction: (customer: Customer, billing: Billing) => void;
+  onWarningClick: (customer: Customer) => void;
+  onAddWarning: (customerId: string, message: string) => Promise<void>;
+  onResolveWarning: (warningId: string) => Promise<void>;
   areValuesHidden: boolean;
   onOpenRouteCreator: () => void;
   onSaveRoute: (name: string, customerIds: string[]) => Promise<void>;
   onDeleteRoute: (routeId: string) => Promise<void>;
-  onOpenDigitalBilling: (customer: Customer) => void;
-  onOpenEsp32Dashboard: (herokuId: string, machineName: string, customerMpStoreId?: string) => void;
 }
 
 type EquipmentFilter = 'all' | 'mesa' | 'jukebox' | 'grua';
@@ -95,17 +96,17 @@ const RouteSection: React.FC<{
     onWhatsAppActions: (customer: Customer) => void;
     onFinalizePendingPayment: (billing: Billing) => void;
     onPendingPaymentAction: (customer: Customer, billing: Billing) => void;
+    onAddWarning: (customerId: string, message: string) => Promise<void>;
+    onResolveWarning: (warningId: string) => Promise<void>;
     areValuesHidden: boolean;
     onUpdateCustomer: (updatedCustomer: Partial<Customer> & { id: string }) => void;
     onWarningClick: (customer: Customer) => void;
-    onOpenDigitalBilling: (customer: Customer) => void;
-    onOpenEsp32Dashboard: (herokuId: string, machineName: string, customerMpStoreId?: string) => void;
     onDeleteRoute: (routeId: string) => Promise<void>;
 }> = ({ 
     route, customers, billings, warnings, onBillCustomer, onEditCustomer, onDeleteCustomer, 
     onPayDebtCustomer, onHistoryCustomer, showNotification, onFocusCustomer, onFichaActions, 
     onLocationActions, onWhatsAppActions, onFinalizePendingPayment, onPendingPaymentAction, 
-    areValuesHidden, onUpdateCustomer, onWarningClick, onOpenDigitalBilling, onOpenEsp32Dashboard, onDeleteRoute 
+    areValuesHidden, onUpdateCustomer, onWarningClick, onDeleteRoute 
 }) => {
     const routeCustomers = useMemo(() => 
         route.customerIds.map(id => customers.find(c => c.id === id)).filter((c): c is Customer => !!c),
@@ -120,7 +121,7 @@ const RouteSection: React.FC<{
                     <MapIcon className="w-6 h-6 text-slate-400" />
                     {route.name} ({route.customerIds.length})
                 </h2>
-                <button onClick={() => onDeleteRoute(route.id)} className="text-red-500 hover:text-red-400 p-2 rounded-full hover:bg-red-500/10" title="Excluir Rota">
+                <button onClick={() => { if (window.prompt('Autenticação necessária. Digite a senha de administrador (1678):') === '1678') onDeleteRoute(route.id); }} className="text-red-500 hover:text-red-400 p-2 rounded-full hover:bg-red-500/10" title="Excluir Rota">
                     <TrashIcon className="w-5 h-5" />
                 </button>
             </div>
@@ -147,11 +148,12 @@ const RouteSection: React.FC<{
                                         onWhatsAppActions={onWhatsAppActions} 
                                         onFinalizePendingPayment={onFinalizePendingPayment} 
                                         onPendingPaymentAction={onPendingPaymentAction} 
+                                        activeWarningId={warnings.find(w => w.customerId === customer.id && !w.isResolved)?.id}
+                                        onAddWarning={onAddWarning}
+                                        onResolveWarning={onResolveWarning}
                                         areValuesHidden={areValuesHidden} 
                                         onUpdateCustomer={onUpdateCustomer} 
                                         onWarningClick={() => onWarningClick(customer)} 
-                                        onOpenDigitalBilling={onOpenDigitalBilling} 
-                                        onOpenEsp32Dashboard={onOpenEsp32Dashboard} 
                                     />
                                 </div>
                             </div>
@@ -185,12 +187,12 @@ const ClientesView: React.FC<ClientesViewProps> = ({
     onWhatsAppActions,
     onFinalizePendingPayment,
     onPendingPaymentAction,
+    onAddWarning,
+    onResolveWarning,
     areValuesHidden,
     onOpenRouteCreator,
     onSaveRoute,
     onDeleteRoute,
-    onOpenDigitalBilling,
-    onOpenEsp32Dashboard,
 }) => {
   const [viewMode, setViewMode] = useState<ViewMode>('cidades');
   const [searchQuery, setSearchQuery] = useState('');
@@ -334,7 +336,7 @@ const ClientesView: React.FC<ClientesViewProps> = ({
             return (
                 <section key={city} className={`${cardBgColor} ${cardBorderColor} p-4 rounded-lg shadow-lg border`}>
                     <div className="flex flex-wrap justify-between items-center gap-x-4 gap-y-2 mb-4"><h2 className="text-2xl font-bold text-red-600 dark:text-red-500 flex items-center gap-2"><LocationMarkerIcon className="w-6 h-6 text-slate-400" />{city} ({cityCustomers.length})</h2><div className="flex items-center gap-4"><div className="flex items-center gap-1.5 text-green-500" title="Clientes visitados nos últimos 25 dias"><GreenBilliardBallIcon className="w-4 h-4" /><span className="font-bold">{stats.visited}</span></div><div className="flex items-center gap-1.5 text-red-500" title="Clientes com visita pendente"><RedBilliardBallIcon className="w-4 h-4" /><span className="font-bold">{stats.notVisited}</span></div><button onClick={() => handleOpenCityCustomers(city)} className="text-sm font-semibold text-lime-600 dark:text-lime-400 hover:underline">Ver Todos &rarr;</button></div></div>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">{cityCustomers.slice(0, 8).map(customer => (<CustomerCard key={customer.id} customer={customer} billings={billings} hasActiveWarning={warnings.some(w => w.customerId === customer.id && !w.isResolved)} onBill={onBillCustomer} onEdit={onEditCustomer} onDelete={onDeleteCustomer} onPayDebt={onPayDebtCustomer} onHistory={onHistoryCustomer} showNotification={showNotification} onFocusCustomer={setFocusedCustomer} onFichaActions={onFichaActions} onLocationActions={onLocationActions} onWhatsAppActions={onWhatsAppActions} onFinalizePendingPayment={onFinalizePendingPayment} onPendingPaymentAction={onPendingPaymentAction} areValuesHidden={areValuesHidden} onUpdateCustomer={onUpdateCustomer} onWarningClick={handleWarningClick} onOpenDigitalBilling={onOpenDigitalBilling} onOpenEsp32Dashboard={onOpenEsp32Dashboard} />))}</div>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">{cityCustomers.slice(0, 8).map(customer => (<CustomerCard key={customer.id} customer={customer} billings={billings} hasActiveWarning={warnings.some(w => w.customerId === customer.id && !w.isResolved)} activeWarningId={warnings.find(w => w.customerId === customer.id && !w.isResolved)?.id} onBill={onBillCustomer} onEdit={onEditCustomer} onDelete={onDeleteCustomer} onPayDebt={onPayDebtCustomer} onHistory={onHistoryCustomer} showNotification={showNotification} onFocusCustomer={setFocusedCustomer} onFichaActions={onFichaActions} onLocationActions={onLocationActions} onWhatsAppActions={onWhatsAppActions} onFinalizePendingPayment={onFinalizePendingPayment} onPendingPaymentAction={onPendingPaymentAction} onAddWarning={onAddWarning} onResolveWarning={onResolveWarning} areValuesHidden={areValuesHidden} onUpdateCustomer={onUpdateCustomer} onWarningClick={handleWarningClick} />))}</div>
                 </section>
             );
             }) : (
@@ -367,11 +369,11 @@ const ClientesView: React.FC<ClientesViewProps> = ({
                     onWhatsAppActions={onWhatsAppActions}
                     onFinalizePendingPayment={onFinalizePendingPayment}
                     onPendingPaymentAction={onPendingPaymentAction}
+                    onAddWarning={onAddWarning}
+                    onResolveWarning={onResolveWarning}
                     areValuesHidden={areValuesHidden}
                     onUpdateCustomer={onUpdateCustomer}
                     onWarningClick={handleWarningClick}
-                    onOpenDigitalBilling={onOpenDigitalBilling}
-                    onOpenEsp32Dashboard={onOpenEsp32Dashboard}
                     onDeleteRoute={onDeleteRoute}
                 />
             ))}
@@ -387,8 +389,8 @@ const ClientesView: React.FC<ClientesViewProps> = ({
         onSelectCity={handleOpenCityCustomers} 
       />
 
-      {viewingCity && (<CityCustomersModal city={viewingCity} customers={customersByCity[viewingCity] || []} warnings={warnings} billings={billings} onClose={() => setViewingCity(null)} onBillCustomer={onBillCustomer} onEditCustomer={onEditCustomer} onDeleteCustomer={onDeleteCustomer} onPayDebtCustomer={onPayDebtCustomer} onHistoryCustomer={onHistoryCustomer} showNotification={showNotification} onFocusCustomer={setFocusedCustomer} onFichaActions={onFichaActions} onLocationActions={onLocationActions} onWhatsAppActions={onWhatsAppActions} onFinalizePendingPayment={onFinalizePendingPayment} onPendingPaymentAction={onPendingPaymentAction} areValuesHidden={areValuesHidden} onUpdateCustomer={onUpdateCustomer} onWarningClick={handleWarningClick} onOpenDigitalBilling={onOpenDigitalBilling} onOpenEsp32Dashboard={onOpenEsp32Dashboard} />)}
-      {focusedCustomer && <FullScreenCustomerView customer={focusedCustomer} onClose={() => setFocusedCustomer(null)} warnings={warnings} onWarningClick={handleWarningClick} onOpenDigitalBilling={onOpenDigitalBilling} onOpenEsp32Dashboard={onOpenEsp32Dashboard} />}
+      {viewingCity && (<CityCustomersModal city={viewingCity} customers={customersByCity[viewingCity] || []} warnings={warnings} billings={billings} onClose={() => setViewingCity(null)} onBillCustomer={onBillCustomer} onEditCustomer={onEditCustomer} onDeleteCustomer={onDeleteCustomer} onPayDebtCustomer={onPayDebtCustomer} onHistoryCustomer={onHistoryCustomer} showNotification={showNotification} onFocusCustomer={setFocusedCustomer} onFichaActions={onFichaActions} onLocationActions={onLocationActions} onWhatsAppActions={onWhatsAppActions} onFinalizePendingPayment={onFinalizePendingPayment} onPendingPaymentAction={onPendingPaymentAction} onAddWarning={onAddWarning} onResolveWarning={onResolveWarning} onWarningClick={handleWarningClick} areValuesHidden={areValuesHidden} onUpdateCustomer={onUpdateCustomer} />)}
+      {focusedCustomer && <FullScreenCustomerView customer={focusedCustomer} onClose={() => setFocusedCustomer(null)} warnings={warnings} onWarningClick={handleWarningClick} />}
       <WarningDetailsModal isOpen={!!viewingWarning} onClose={() => setViewingWarning(null)} customer={viewingWarning?.customer || null} warning={viewingWarning?.warning || null} />
       <HistoryModal isOpen={!!historyCustomer} onClose={() => setHistoryCustomer(null)} customer={historyCustomer} billings={billings} equipments={allEquipments} />
     </div>

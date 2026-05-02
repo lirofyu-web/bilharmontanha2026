@@ -197,7 +197,7 @@ const ConfiguracoesView: React.FC<ConfiguracoesViewProps> = ({
   };
 
   const handleDeletePixKey = async (id: string) => {
-      if (!window.confirm('Tem certeza que deseja excluir esta chave PIX?')) return;
+      if (window.prompt('Autenticação necessária. Digite a senha de administrador (1678) para confirmar a exclusão da chave PIX:') !== '1678') return;
       const keyToDelete = pixKeys.find(key => key.id === id);
       let updatedKeys = pixKeys.filter(key => key.id !== id);
 
@@ -254,50 +254,7 @@ const ConfiguracoesView: React.FC<ConfiguracoesViewProps> = ({
             </div>
         </section>
         
-        {/* Mercado Pago Integration Section */}
-        <section>
-          <h2 className="text-2xl font-semibold text-white mb-6 border-b border-slate-700 pb-2">Integrações Mercado Pago</h2>
-          <div className="bg-slate-800 p-6 rounded-lg shadow-lg border border-slate-700">
-            <h3 className="text-xl font-bold text-white mb-2">Token de Acesso (API)</h3>
-            <p className="text-slate-400 mb-4">Insira o seu <strong>Access Token</strong> de Produção do Mercado Pago para habilitar consultas de faturamento e geração de QR Codes.</p>
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-slate-300 mb-1">Mercado Pago Access Token</label>
-                <div className="flex gap-2">
-                    <input 
-                      type="password" 
-                      placeholder="APP_USR-..." 
-                      defaultValue={userProfile?.mercadoPagoToken || ''} 
-                      onBlur={async (e) => {
-                        const token = e.target.value.trim();
-                        if (token !== (userProfile?.mercadoPagoToken || '')) {
-                          await onUpdateUserProfile({ mercadoPagoToken: token });
-                          showNotification('Token Mercado Pago atualizado!', 'success');
-                        }
-                      }}
-                      className="flex-grow bg-slate-700 border border-slate-600 rounded-md py-2 px-3 text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500" 
-                    />
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-1">ID da Loja (PIX MONTANHA - Frota)</label>
-                  <input 
-                      type="text" 
-                      placeholder="Ex: 12345678" 
-                      defaultValue={userProfile?.mercadoPagoStoreId || ''} 
-                      onBlur={async (e) => {
-                        const storeId = e.target.value.trim();
-                        if (storeId !== (userProfile?.mercadoPagoStoreId || '')) {
-                          await onUpdateUserProfile({ mercadoPagoStoreId: storeId });
-                          showNotification('ID da Loja Global atualizado!', 'success');
-                        }
-                      }}
-                      className="w-full bg-slate-700 border border-slate-600 rounded-md py-2 px-3 text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500" 
-                  />
-                </div>
-            </div>
-          </div>
-        </section>
+
         
         {/* Account Section */}
         <section>

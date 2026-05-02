@@ -59,7 +59,7 @@ class ErrorBoundary extends Component<Props, State> {
             </button>
 
             <p className="text-slate-600 text-[10px] uppercase font-bold tracking-tighter">
-              PIX MONTANHA &copy; 2026
+              MONTANHA GESTÃO &copy; 2026
             </p>
           </div>
         </div>

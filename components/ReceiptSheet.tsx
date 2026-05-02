@@ -9,6 +9,7 @@ interface ReceiptSheetProps {
   isProvisional?: boolean;
   qrCodeDataUrl?: string; // For SSR/PDF printing
   pixKeyName?: string;
+  previousDebt?: number;
 }
 
 const ReceiptRow: React.FC<{label: string, value: string | number}> = ({ label, value }) => (
@@ -19,7 +20,7 @@ const ReceiptRow: React.FC<{label: string, value: string | number}> = ({ label, 
     </div>
 );
 
-const ReceiptSheet: React.FC<ReceiptSheetProps> = ({ billing, isProvisional, qrCodeDataUrl, pixKeyName }) => {
+const ReceiptSheet: React.FC<ReceiptSheetProps> = ({ billing, isProvisional, qrCodeDataUrl, pixKeyName, previousDebt }) => {
     const isMesa = billing.equipmentType === 'mesa';
     const isGrua = billing.equipmentType === 'grua';
     
@@ -145,7 +146,11 @@ const ReceiptSheet: React.FC<ReceiptSheetProps> = ({ billing, isProvisional, qrC
             <div className="space-y-1">
                 <p>CLIENTE: {billing.customerName}</p>
                 <p>DATA: {new Date(billing.settledAt).toLocaleString('pt-BR')}</p>
-                <hr className="border-dashed border-black my-2" />
+                {previousDebt && previousDebt > 0 ? (
+                    <div className="bg-black text-white p-1 my-2 text-center font-bold">
+                        <ReceiptRow label="DÍVIDA ANTERIOR:" value={`R$ ${formatCurrency(previousDebt)}`} />
+                    </div>
+                ) : <hr className="border-dashed border-black my-2" />}
                 
                 {isGrua ? renderGruaDetails() : renderMesaJukeboxDetails()}
                 

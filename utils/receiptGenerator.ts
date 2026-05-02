@@ -184,3 +184,44 @@ export function generateCustomerShareText(customer: Customer): string {
 
   return text.trim();
 }
+
+export function generateHerokuPaymentReportText(machineName: string, startDate: string, endDate: string, report: any): string {
+    const counts = { pix: 0, credito: 0, debito: 0, especie: 0 };
+    const totals = { pix: 0, credito: 0, debito: 0, especie: 0 };
+    
+    (report.pagamentos || []).forEach((p: any) => {
+        const form = (p.forma_pagamento || '').toLowerCase();
+        if (form.includes('pix')) { counts.pix++; totals.pix += (p.valor || 0); }
+        else if (form.includes('credito') || form.includes('crédito')) { counts.credito++; totals.credito += (p.valor || 0); }
+        else if (form.includes('debito') || form.includes('débito')) { counts.debito++; totals.debito += (p.valor || 0); }
+        else { counts.especie++; totals.especie += (p.valor || 0); }
+    });
+
+    const totalValor = totals.pix + totals.credito + totals.debito + totals.especie;
+    const totalQtd = counts.pix + counts.credito + counts.debito + counts.especie;
+
+    return `
+*MONTANHA BILHAR & JUKEBOX*
+${COMPANY_DETAILS}
+FECHAMENTO DE MÁQUINA (PIX)
+--------------------------------
+MÁQUINA: ${machineName.toUpperCase()}
+PERÍODO: ${startDate} A ${endDate}
+GERADO EM: ${new Date().toLocaleString('pt-BR')}
+--------------------------------
+PAGAMENTOS (QTD / VALOR):
+- PIX: ${counts.pix} (R$ ${formatCurrency(totals.pix)})
+- CRÉDITO: ${counts.credito} (R$ ${formatCurrency(totals.credito)})
+- DÉBITO: ${counts.debito} (R$ ${formatCurrency(totals.debito)})
+- ESPÉCIE: ${counts.especie} (R$ ${formatCurrency(totals.especie)})
+--------------------------------
+ESTORNOS: R$ ${formatCurrency(report.estornos || 0)}
+ESTOQUE ATUAL: ${report.estoque || 0}
+--------------------------------
+TOTAL QTD: ${totalQtd}
+TOTAL VALOR: R$ ${formatCurrency(totalValor)}
+--------------------------------
+*** RELATÓRIO PARA CONFERÊNCIA ***
+*** SEM VALOR FISCAL ***
+    `.trim();
+}

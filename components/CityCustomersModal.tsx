@@ -23,11 +23,11 @@ interface CityCustomersModalProps {
   onWhatsAppActions: (customer: Customer) => void;
   onFinalizePendingPayment: (billing: Billing) => void;
   onPendingPaymentAction: (customer: Customer, billing: Billing) => void;
+  onAddWarning: (customerId: string, message: string) => Promise<void>;
+  onResolveWarning: (warningId: string) => Promise<void>;
   onWarningClick: (customer: Customer) => void;
   areValuesHidden: boolean;
   onUpdateCustomer: (updatedCustomer: Partial<Customer> & { id: string }) => void;
-  onOpenDigitalBilling: (customer: Customer) => void;
-  onOpenEsp32Dashboard: (herokuId: string, machineName: string, customerMpStoreId?: string) => void;
 }
 
 const CityCustomersModal: React.FC<CityCustomersModalProps> = ({
@@ -48,11 +48,11 @@ const CityCustomersModal: React.FC<CityCustomersModalProps> = ({
   onWhatsAppActions,
   onFinalizePendingPayment,
   onPendingPaymentAction,
+  onAddWarning,
+  onResolveWarning,
   onWarningClick,
   areValuesHidden,
   onUpdateCustomer,
-  onOpenDigitalBilling,
-  onOpenEsp32Dashboard,
 }) => {
   const { 
     slicedItems: slicedCustomers, 
@@ -95,6 +95,7 @@ const CityCustomersModal: React.FC<CityCustomersModalProps> = ({
                       customer={customer}
                       billings={billings}
                       hasActiveWarning={hasActiveWarning}
+                      activeWarningId={warnings.find(w => w.customerId === customer.id && !w.isResolved)?.id}
                       onBill={onBillCustomer}
                       onEdit={onEditCustomer}
                       onDelete={onDeleteCustomer}
@@ -107,11 +108,11 @@ const CityCustomersModal: React.FC<CityCustomersModalProps> = ({
                       onFichaActions={onFichaActions}
                       onFinalizePendingPayment={onFinalizePendingPayment}
                       onPendingPaymentAction={onPendingPaymentAction}
+                      onAddWarning={onAddWarning}
+                      onResolveWarning={onResolveWarning}
                       onWarningClick={onWarningClick}
                       areValuesHidden={areValuesHidden}
                       onUpdateCustomer={onUpdateCustomer}
-                      onOpenDigitalBilling={onOpenDigitalBilling}
-                      onOpenEsp32Dashboard={onOpenEsp32Dashboard}
                     />
                 </div>
               );

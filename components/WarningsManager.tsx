@@ -5,6 +5,7 @@ import { PlusIcon } from './icons/PlusIcon';
 import { TrashIcon } from './icons/TrashIcon';
 import { CheckCircleIcon } from './icons/CheckCircleIcon';
 import { AlertIcon } from './icons/AlertIcon';
+import ActionModal from './ActionModal';
 
 interface WarningsManagerProps {
   customers: Customer[];
@@ -17,6 +18,7 @@ interface WarningsManagerProps {
 const WarningsManager: React.FC<WarningsManagerProps> = ({ customers, warnings, onAddWarning, onResolveWarning, onDeleteWarning }) => {
   const [selectedCustomer, setSelectedCustomer] = useState('');
   const [message, setMessage] = useState('');
+  const [warningToDelete, setWarningToDelete] = useState<string | null>(null);
 
   const activeWarnings = useMemo(() => {
     return warnings
@@ -102,7 +104,7 @@ const WarningsManager: React.FC<WarningsManagerProps> = ({ customers, warnings, 
                   <button onClick={() => onResolveWarning(warning.id)} title="Marcar como Resolvido" className="p-1.5 text-green-500 hover:text-green-400 hover:bg-green-500/10 rounded-full">
                     <CheckCircleIcon className="w-5 h-5" />
                   </button>
-                  <button onClick={() => onDeleteWarning(warning.id)} title="Excluir Aviso" className="p-1.5 text-red-500 hover:text-red-400 hover:bg-red-500/10 rounded-full">
+                  <button onClick={() => setWarningToDelete(warning.id)} title="Excluir Aviso" className="p-1.5 text-red-500 hover:text-red-400 hover:bg-red-500/10 rounded-full">
                     <TrashIcon className="w-5 h-5" />
                   </button>
                 </div>
@@ -113,6 +115,19 @@ const WarningsManager: React.FC<WarningsManagerProps> = ({ customers, warnings, 
           )}
         </div>
       </div>
+
+      {warningToDelete && (
+          <ActionModal
+              isOpen={!!warningToDelete}
+              onClose={() => setWarningToDelete(null)}
+              onConfirm={() => { onDeleteWarning(warningToDelete); setWarningToDelete(null); }}
+              title="Confirmar Exclusão"
+              confirmText="Sim, Excluir"
+              requirePassword="1678"
+          >
+              <p>Tem certeza que deseja excluir este aviso?</p>
+          </ActionModal>
+      )}
     </div>
   );
 };

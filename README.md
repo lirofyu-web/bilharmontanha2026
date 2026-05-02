@@ -2,9 +2,9 @@
 <img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
 </div>
 
-# Montanha Bilhar e Jukebox
+# Montanha Gestão
 
-Este é um sistema de gestão completo para a **Montanha Bilhar e Jukebox**, projetado para otimizar as operações diárias, incluindo:
+Este é um sistema de gestão completo para a **Montanha Gestão**, projetado para otimizar as operações diárias, incluindo:
 
 - **Gestão de Clientes:** Cadastro, consulta e organização da base de clientes.
 - **Controle de Cobranças:** Geração e acompanhamento de cobranças, com emissão de recibos.

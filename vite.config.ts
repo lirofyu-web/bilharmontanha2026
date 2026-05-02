@@ -30,7 +30,7 @@ export default defineConfig(({ mode }) => {
           devOptions: { enabled: true },
           includeAssets: ['icon-192x192.png', 'icon-512x512.png'],
           manifest: {
-            name: "Montanha Bilhar e Jukebox",
+            name: "Montanha Gestão",
             short_name: "Montanha",
             description: "Gerenciamento de locação de mesas de bilhar, jukebox e gruas.",
             theme_color: "#84cc16",

@@ -1,7 +1,7 @@
 import { Capacitor } from '@capacitor/core';
 import { User } from "firebase/auth";
 import { View } from '../types';
-import { HomeIcon, UsersIcon, ReceiptIcon, CalculatorIcon, ChartBarIcon, MapIcon, CogIcon, BilliardIcon, ArrowsPointingOutIcon, AndroidIcon, DatabaseIcon, PixIcon } from './icons';
+import { HomeIcon, UsersIcon, ReceiptIcon, CalculatorIcon, ChartBarIcon, MapIcon, CogIcon, BilliardIcon, ArrowsPointingOutIcon, AndroidIcon, DatabaseIcon } from './icons';
 import AppLogo from './AppLogo';
 
 interface SidebarProps {
@@ -22,7 +22,6 @@ const navItems = [
     { view: 'DESPESAS' as View, label: 'Despesas', icon: CalculatorIcon },
     { view: 'ROTAS' as View, label: 'Rotas', icon: MapIcon },
     { view: 'RELATORIOS' as View, label: 'Relatórios', icon: ChartBarIcon },
-    { view: 'MAQUINAS' as View, label: 'PIX MONTANHA', icon: PixIcon },
 ];
 
 const secondaryNavItems = [
